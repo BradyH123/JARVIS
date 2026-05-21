@@ -1,8 +1,8 @@
 // coach.js
 //
-// Rule-based stand-in for the AI brain. It returns NODES that get added
-// to the canvas — questions, tasks, ideas, branches. Each function here
-// maps to one prompt that will later be sent to Claude.
+// Drives the user with prompts. Each call to getNextPrompt inspects the
+// current canvas state and decides what to ask next — what to add, what
+// to highlight, what phase we're in. Easy to replace with a Claude call.
 
 const TYPES = {
   learning: { label: 'Learning', icon: '📚' },
@@ -35,153 +35,6 @@ function classify(text) {
   return { type: best, ...TYPES[best] };
 }
 
-// First physical move per type — "where to put your hands"
-const FIRST_TOUCH = {
-  learning: 'Sit down. Put both hands flat on the desk.',
-  creative: 'Open a blank page. Fingers on the keyboard.',
-  project:  'Open the tool. Hand on the trackpad.',
-  physical: 'Stand up. Walk to where the task is.',
-  decision: 'Open notes. Thumb on the screen.',
-  career:   'Open the doc. Hands on the keyboard.',
-  planning: 'Open the calendar. Tap on today.',
-  default:  'Both hands flat on the surface in front of you.',
-};
-
-const FIVE_MIN_KICK = {
-  learning: 'Set a 5-min timer. Just skim the first page.',
-  creative: 'Set a 5-min timer. Type whatever lands — bad on purpose.',
-  project:  'Set a 5-min timer. Open the tool and type the goal at the top.',
-  physical: 'Set a 5-min timer. Move ONE physical thing.',
-  decision: 'Set a 5-min timer. List the options, even bad ones.',
-  career:   'Set a 5-min timer. Write the worst possible first sentence.',
-  planning: 'Set a 5-min timer. Brain-dump every piece involved.',
-  default:  'Set a 5-min timer. You can stop after.',
-};
-
-const ANGLES = {
-  learning: ['What\'s the ONE concept you keep avoiding?', 'What does the teacher actually grade?'],
-  creative: ['Whose work would you love this to feel like?', 'What part scares you most? Start there.'],
-  project:  ['What\'s the smallest version that would still be useful?', 'What part are you avoiding because it\'s boring?'],
-  physical: ['What\'s the one thing in the way?', 'What\'s the messiest spot? Start there.'],
-  decision: ['What\'s the worst case of option A?', 'Future-you 6 months out — what would they choose?'],
-  career:   ['Who could read this in 60 seconds and tell you the truth?', 'What\'s the ONE line that has to land?'],
-  planning: ['Who else needs to know?', 'What falls apart if one piece is late?'],
-  default:  ['What would make this easier?', 'What\'s the one thing you keep avoiding?'],
-};
-
-const NUDGES = [
-  'Still with me? Tap the glowing one.',
-  'Don\'t think — just pick the next move.',
-  'One tiny action. Go.',
-  'Your map is waiting. Tap something.',
-];
-const CHEERS = [
-  'You did it. Momentum.',
-  'Stack another one.',
-  'Future-you is grateful.',
-  'That\'s real progress.',
-  'Keep the streak.',
-];
-
-function pickRandom(a) { return a[Math.floor(Math.random() * a.length)]; }
-
-let _idCounter = 0;
-function nid() { _idCounter += 1; return `n_${Date.now().toString(36)}_${_idCounter}`; }
-
-// All node-generation functions return PARTIAL nodes (no id/x/y/parentId);
-// the canvas fills those in.
-function partial(type, text, opts = {}) {
-  return { type, text, ...opts };
-}
-
-// When the user first submits, spawn the initial tree.
-function generateInitial(rootText, c) {
-  return [
-    partial('question', 'In one sentence: what does "done" actually look like?', {
-      status: 'active',
-    }),
-    partial('task', FIRST_TOUCH[c.type], { status: 'pending' }),
-    partial('task', FIVE_MIN_KICK[c.type], { status: 'pending' }),
-    partial('idea', pickRandom(ANGLES[c.type] || ANGLES.default), { status: 'pending' }),
-    partial('question', 'How much time do you want to spend right now?', {
-      status: 'pending',
-      options: ['5 min', '15 min', '25 min', '1 hour', 'until done'],
-    }),
-  ];
-}
-
-// When the user answers a question.
-function generateAfterAnswer(node, answer, c) {
-  const a = (answer || '').trim();
-  const short = a.length > 60 ? a.slice(0, 57) + '…' : a;
-
-  // If it was the timebox question, surface hidden sub-tasks
-  if (node.options && node.options.some((o) => /min|hour|done/.test(o))) {
-    return [
-      partial('idea', `Heads up: ${c.label.toLowerCase()} tasks usually run 50% longer than you think. Build in a buffer.`, {
-        status: 'pending',
-      }),
-      partial('task', `Set a timer for ${a} and tap start.`, { status: 'active' }),
-    ];
-  }
-
-  // Outcome-style answer → translate into a concrete task
-  return [
-    partial('task', `Spend 2 minutes moving toward: "${short}"`, {
-      status: 'active',
-    }),
-    partial('question', 'What\'s the first concrete thing you need to make this happen?', {
-      status: 'pending',
-    }),
-  ];
-}
-
-// When the user completes a task.
-function generateAfterTaskDone(_node, c) {
-  return [
-    partial('celebration', pickRandom(CHEERS), { status: 'pending' }),
-    partial('task', `Stack another tiny move: ${nextMicroFor(c)}`, { status: 'active' }),
-  ];
-}
-
-// When the user skips a task — give them an even smaller version.
-function generateAfterTaskSkipped(node, _c) {
-  return [
-    partial('task', `Smaller version: just look at it for 30 seconds.`, {
-      status: 'active',
-    }),
-    partial('idea', `Name what\'s in the way out loud, then come back.`, { status: 'pending' }),
-  ];
-}
-
-// When the user accepts an idea — promote it into a task.
-function generateAfterIdeaAccepted(node, _c) {
-  return [
-    partial('task', `Try it: ${node.text}`, { status: 'active' }),
-  ];
-}
-
-// Periodic nudge if the user goes idle.
-function generateNudge() {
-  return partial('question', pickRandom(NUDGES), { status: 'active' });
-}
-
-const NEXT_POOL = {
-  learning: ['Re-read what you just did.', 'Test yourself on one fact.', 'Find the next concept.'],
-  creative: ['Add one more sentence.', 'Re-read and circle one good line.', 'Take a 60-second pause.'],
-  project:  ['Use what you just built once.', 'Note one thing to fix.', 'Commit / save your work.'],
-  physical: ['Put away ONE item.', 'Move to the next spot.', 'Take a 30-second water break.'],
-  decision: ['Add one more pro or con.', 'Ask one person for input.', 'Sit with it for 60 seconds.'],
-  career:   ['Read what you wrote out loud.', 'Cut the worst sentence.', 'Save it.'],
-  planning: ['Block the time on a calendar.', 'Text one person about it.', 'Set a reminder.'],
-  default:  ['Do it again, smaller.', 'Take one breath.', 'Note what you learned.'],
-};
-function nextMicroFor(c) {
-  const pool = NEXT_POOL[c.type] || NEXT_POOL.default;
-  return pickRandom(pool);
-}
-
-// --- Brain dump triage ---
 const NOW_RX = /\b(today|now|asap|urgent|due|deadline|tonight|this morning|this afternoon|tomorrow|need to|have to|must|owe)\b/i;
 const TRASH_RX = /\b(maybe|someday|might|could|wish|wonder|consider|eventually|if i|one day)\b/i;
 
@@ -211,27 +64,237 @@ function actionableNextStep(item) {
   return 'Spend 2 minutes on it. You can stop after.';
 }
 
-// --- Daily check-in prompts ---
 function greeting() {
   const h = new Date().getHours();
-  if (h < 5) return 'Late night.';
+  if (h < 5)  return 'Late night.';
   if (h < 12) return 'Good morning.';
   if (h < 17) return 'Good afternoon.';
   if (h < 22) return 'Good evening.';
   return 'Late night.';
 }
 
+let _id = 0;
+function nid() { _id += 1; return `n_${Date.now().toString(36)}_${_id}`; }
+
+// --- Prompt-driven coach ---
+//
+// A prompt has:
+//   id, text, hint, type ('open'|'choice'|'confirm'),
+//   options? (for choice), referencingNodeId, action, parentId
+//
+// When the user answers, the App calls handleAnswer(prompt, response, state)
+// which returns { addNodes, updateNodeIds, markDoneIds, transientHighlight }.
+// Then getNextPrompt(state) returns the next prompt.
+
+function getNextPrompt(state) {
+  const { nodes, rootId } = state;
+  const root = nodes.find((n) => n.id === rootId);
+  const themes = nodes.filter((n) => n.type === 'theme');
+  const tasks  = nodes.filter((n) => n.type === 'task');
+
+  // Phase 1 — get up to 4 themes off the root
+  if (themes.length < 4) {
+    if (themes.length === 0) {
+      return {
+        id: nid(),
+        text: `Looking at "${root.text}" — what's the first big piece this is made of?`,
+        hint: 'One short phrase. Don\'t overthink.',
+        type: 'open',
+        referencingNodeId: root.id,
+        action: 'add-theme',
+        parentId: root.id,
+      };
+    }
+    if (themes.length === 1) {
+      return {
+        id: nid(),
+        text: `Good. What else does this involve?`,
+        hint: 'Another piece. Another angle. Anything that comes to mind.',
+        type: 'open',
+        referencingNodeId: root.id,
+        action: 'add-theme',
+        parentId: root.id,
+      };
+    }
+    if (themes.length === 2) {
+      return {
+        id: nid(),
+        text: `One more — what's the part you keep avoiding?`,
+        hint: 'The annoying one. The boring one. Name it.',
+        type: 'open',
+        referencingNodeId: root.id,
+        action: 'add-theme',
+        parentId: root.id,
+      };
+    }
+    // 3 themes → offer an optional 4th
+    return {
+      id: nid(),
+      text: `Anything else? Tap skip if your map feels complete.`,
+      hint: 'Often the 4th piece is the one you forgot.',
+      type: 'open-or-skip',
+      referencingNodeId: root.id,
+      action: 'add-theme',
+      parentId: root.id,
+    };
+  }
+
+  // Phase 2 — drill into each theme by getting one task per theme
+  const themeWithoutTask = themes.find(
+    (t) => !tasks.some((task) => task.parentId === t.id),
+  );
+  if (themeWithoutTask) {
+    return {
+      id: nid(),
+      text: `Zoom in here. What's the very first action you'd take on this?`,
+      hint: 'A real, physical action. Where would your hands go?',
+      type: 'open',
+      referencingNodeId: themeWithoutTask.id,
+      action: 'add-task',
+      parentId: themeWithoutTask.id,
+    };
+  }
+
+  // Phase 3 — pick which task to do FIRST
+  const pendingTasks = tasks.filter((t) => t.status !== 'done');
+  if (pendingTasks.length > 0 && !state.flags?.firstTaskPicked) {
+    return {
+      id: nid(),
+      text: `Look at your map. Which one feels most doable right now?`,
+      hint: 'No wrong answer. Pick the one you can start in under 2 minutes.',
+      type: 'choice',
+      options: pendingTasks.map((t) => ({ value: t.id, label: t.text })),
+      referencingNodeId: null,
+      action: 'pick-first-task',
+    };
+  }
+
+  // Phase 4 — execute (the picked task)
+  const activeTask = nodes.find(
+    (n) => n.type === 'task' && n.status === 'active',
+  );
+  if (activeTask) {
+    return {
+      id: nid(),
+      text: `Ready? Set a timer if it helps. Tap done the moment it's done.`,
+      hint: 'You can spend literally 60 seconds. The hard part is starting.',
+      type: 'confirm',
+      options: [
+        { value: 'done', label: '✓ Done' },
+        { value: 'stuck', label: '😵 Stuck' },
+        { value: 'skip', label: '→ Skip' },
+      ],
+      referencingNodeId: activeTask.id,
+      action: 'execute',
+      targetId: activeTask.id,
+    };
+  }
+
+  // Phase 5 — loop back: any tasks left?
+  const moreTasks = tasks.filter((t) => t.status !== 'done' && t.status !== 'dismissed');
+  if (moreTasks.length > 0) {
+    return {
+      id: nid(),
+      text: `Nice. What's the next one you want to do?`,
+      hint: 'Stack the momentum.',
+      type: 'choice',
+      options: moreTasks.map((t) => ({ value: t.id, label: t.text })),
+      referencingNodeId: null,
+      action: 'pick-next-task',
+    };
+  }
+
+  // Phase 6 — all done OR drill deeper
+  return {
+    id: nid(),
+    text: `You worked through your whole map. Want to add more?`,
+    hint: 'Or call it a day — that was real progress.',
+    type: 'choice',
+    options: [
+      { value: 'more-themes', label: '+ More pieces' },
+      { value: 'wrap', label: '✓ Wrap up' },
+    ],
+    referencingNodeId: null,
+    action: 'wrap-or-continue',
+  };
+}
+
+// Compute what to do when the user answers `prompt` with `response`.
+function handleAnswer(prompt, response, state) {
+  const out = { addNodes: [], updateNodes: [], removeHighlights: true };
+
+  switch (prompt.action) {
+    case 'add-theme': {
+      if (!response || !response.trim()) return out;
+      out.addNodes.push({
+        type: 'theme',
+        text: response.trim(),
+        parentId: prompt.parentId,
+        status: 'pending',
+        bornAt: Date.now(),
+      });
+      break;
+    }
+    case 'add-task': {
+      if (!response || !response.trim()) return out;
+      out.addNodes.push({
+        type: 'task',
+        text: response.trim(),
+        parentId: prompt.parentId,
+        status: 'pending',
+        bornAt: Date.now(),
+      });
+      break;
+    }
+    case 'pick-first-task':
+    case 'pick-next-task': {
+      // response is the node id
+      out.updateNodes.push({ id: response, patch: { status: 'active' } });
+      // Demote any previously-active task
+      const prevActive = state.nodes.find(
+        (n) => n.type === 'task' && n.status === 'active' && n.id !== response,
+      );
+      if (prevActive) {
+        out.updateNodes.push({ id: prevActive.id, patch: { status: 'pending' } });
+      }
+      out.setFlags = { firstTaskPicked: true };
+      break;
+    }
+    case 'execute': {
+      if (response === 'done') {
+        out.updateNodes.push({ id: prompt.targetId, patch: { status: 'done' } });
+      } else if (response === 'skip') {
+        out.updateNodes.push({ id: prompt.targetId, patch: { status: 'dismissed' } });
+      } else if (response === 'stuck') {
+        // Spawn a smaller sub-task
+        out.addNodes.push({
+          type: 'task',
+          text: 'Smaller version: just look at it for 30 seconds.',
+          parentId: prompt.targetId,
+          status: 'active',
+          bornAt: Date.now(),
+        });
+        out.updateNodes.push({ id: prompt.targetId, patch: { status: 'pending' } });
+      }
+      break;
+    }
+    case 'wrap-or-continue': {
+      if (response === 'wrap') out.setFlags = { wrappedUp: true };
+      break;
+    }
+    default:
+      break;
+  }
+  return out;
+}
+
 const coach = {
   classify,
-  generateInitial,
-  generateAfterAnswer,
-  generateAfterTaskDone,
-  generateAfterTaskSkipped,
-  generateAfterIdeaAccepted,
-  generateNudge,
   triageDump,
   actionableNextStep,
   greeting,
+  getNextPrompt,
+  handleAnswer,
   nid,
 };
 

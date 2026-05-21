@@ -2,28 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Welcome from './Welcome';
 import BrainDump from './BrainDump';
 import DailyCheckIn from './DailyCheckIn';
-import Canvas from './Canvas';
+import Workspace from './Workspace';
 import coach from './coach';
 import { loadState, saveState, clearState, todayKey } from './storage';
-
-// Stages:
-//   welcome -> first time greeting
-//   dump    -> full brain dump
-//   daily   -> "what's today's win?"
-//   canvas  -> the interactive map
-//
-// State shape persisted to localStorage:
-//   {
-//     onboarded: bool,
-//     brainDump: { rawText, buckets: {now,later,trash} },
-//     today: {
-//       date,            // 'YYYY-MM-DD'
-//       goal,            // string
-//       classification,  // {type,label,icon}
-//       meta,            // {energy, timebox}
-//       nodes,           // canvas nodes
-//     }
-//   }
 
 export default function App() {
   const [state, setState] = useState(() => loadState() || {});
@@ -36,7 +17,6 @@ export default function App() {
     return 'canvas';
   }
 
-  // Persist any state change
   useEffect(() => {
     saveState(state);
   }, [state]);
@@ -60,16 +40,16 @@ export default function App() {
         goal,
         classification,
         meta: { energy, timebox },
-        nodes: null, // canvas will build initial
+        workspace: null,
       },
     }));
     setStage('canvas');
   };
 
-  const persistNodes = useCallback((nodes) => {
+  const persistWorkspace = useCallback((wsState) => {
     setState((s) => {
       if (!s.today) return s;
-      return { ...s, today: { ...s.today, nodes } };
+      return { ...s, today: { ...s.today, workspace: wsState } };
     });
   }, []);
 
@@ -108,11 +88,11 @@ export default function App() {
         />
       )}
       {stage === 'canvas' && state.today && (
-        <Canvas
+        <Workspace
           rootText={state.today.goal}
           classification={state.today.classification}
-          initialNodes={state.today.nodes}
-          onPersist={persistNodes}
+          initialState={state.today.workspace}
+          onPersist={persistWorkspace}
           onNewDay={newDay}
           onChangeGoal={changeGoal}
           brainDump={state.brainDump ? state.brainDump.buckets : null}
