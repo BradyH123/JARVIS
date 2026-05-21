@@ -1,27 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import ChatSurface from './ChatSurface';
-import SituationPanel from './SituationPanel';
+import React, { useState } from 'react';
+import Canvas from './Canvas';
+import ChatDrawer from './ChatDrawer';
 import PendingTray from './PendingTray';
-import { mockGoal, mockMessages, mockPending } from './mockData';
-
-function isWideScreen() {
-  if (typeof window === 'undefined') return true;
-  return window.matchMedia('(min-width: 1080px)').matches;
-}
+import { mockGoal, mockPending } from './mockData';
 
 export default function App() {
-  const [panelOpen, setPanelOpen] = useState(() => isWideScreen());
+  const [chatOpen, setChatOpen] = useState(false);
   const [trayOpen, setTrayOpen] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1080px)');
-    const handler = (e) => {
-      // On resize across the breakpoint, snap to the sensible default.
-      setPanelOpen(e.matches);
-    };
-    mq.addEventListener?.('change', handler);
-    return () => mq.removeEventListener?.('change', handler);
-  }, []);
 
   return (
     <div className="app">
@@ -29,7 +14,7 @@ export default function App() {
         <div className="header-left">
           <div className="header-title">{mockGoal.title}</div>
           <div className="header-meta">
-            Day 4 · last touched {mockGoal.lastTouchedRelative} · {mockGoal.stepsDone} steps done
+            Day 4 · {mockGoal.lastTouchedRelative} · {mockGoal.stepsDone} done
           </div>
         </div>
         <div className="header-actions">
@@ -37,28 +22,27 @@ export default function App() {
             className="pill-btn has-badge"
             onClick={() => setTrayOpen(true)}
           >
-            Pending
-            <span className="badge">{mockPending.length}</span>
-          </button>
-          <button
-            className="pill-btn"
-            onClick={() => setPanelOpen((v) => !v)}
-          >
-            {panelOpen ? 'Hide' : 'Situation →'}
+            Pending<span className="badge">{mockPending.length}</span>
           </button>
         </div>
       </header>
 
-      <div className="split">
-        <ChatSurface messages={mockMessages} />
-        {panelOpen && (
-          <SituationPanel
-            onClose={() => setPanelOpen(false)}
-            onOpenTray={() => setTrayOpen(true)}
-          />
-        )}
+      <main className="canvas-scroll">
+        <Canvas onOpenChat={() => setChatOpen(true)} />
+      </main>
+
+      <div className="bottom-bar">
+        <button
+          className="bottom-btn"
+          onClick={() => setChatOpen(true)}
+        >
+          <span className="bottom-icon">◐</span>
+          <span>Chat</span>
+        </button>
+        <div className="bottom-hint">Tap any node · pinch nothing yet</div>
       </div>
 
+      <ChatDrawer open={chatOpen} onClose={() => setChatOpen(false)} />
       {trayOpen && <PendingTray onClose={() => setTrayOpen(false)} />}
     </div>
   );

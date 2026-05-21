@@ -1,5 +1,11 @@
-// Mock data for the v0 prototype — Hat Business example.
-// Everything is hardcoded; no backend. Lets us see and feel the design.
+// Mock data for the v0 canvas prototype — Hat Business.
+//
+// The canvas is nodes + edges. Workflow steps are nodes too, just with
+// a different visual style. The active step is the focal point; the
+// situation web spreads below it.
+//
+// Coordinates (x, y) refer to the CENTER of each node, in pixels.
+// The canvas is sized to fit the bounds + padding.
 
 export const mockGoal = {
   id: 'g1',
@@ -9,216 +15,281 @@ export const mockGoal = {
   stepsDone: 3,
 };
 
+// Canvas dimensions (logical) — the canvas scales to viewport width,
+// these x values are the "design width." On phone (~360px) we render
+// at scale = viewportWidth / DESIGN_W.
+export const DESIGN_W = 360;
+
+export const canvasNodes = [
+  // ── Workflow river (centered vertical column) ────────────
+  {
+    id: 'goal',
+    kind: 'goal',
+    label: 'Hat Business',
+    sub: 'Day 4 · 3 done',
+    x: 180,
+    y: 50,
+  },
+  { id: 's1', kind: 'step-done', label: 'Pick 3 directions', x: 180, y: 130 },
+  { id: 's2', kind: 'step-done', label: 'Situation updated', x: 180, y: 180 },
+  { id: 's3', kind: 'step-done', label: 'Caption critique', x: 180, y: 230 },
+  {
+    id: 's4',
+    kind: 'step-active',
+    label: 'Sketch 3 bucket hat concepts',
+    sub: '~30 min · YOU do this · iPad/paper',
+    x: 180,
+    y: 330,
+  },
+  { id: 's5', kind: 'step-upcoming', label: 'Pick the one to make', x: 180, y: 450 },
+  { id: 's6', kind: 'step-upcoming', label: 'Sew prototype', x: 180, y: 510 },
+
+  // ── Active-step leverages (close to s4) ──────────────────
+  { id: 'drawing', kind: 'skill-strong', label: 'drawing', x: 60, y: 310 },
+  { id: 'ipad', kind: 'tool', label: 'iPad + Procreate', x: 60, y: 360 },
+  { id: 'timePM', kind: 'time', label: 'time · PM', x: 300, y: 330 },
+
+  // ── Skills / toolkit cluster (top-left of situation zone) ─
+  { id: 'sewing', kind: 'skill-strong', label: 'sewing', x: 60, y: 620 },
+  { id: 'talking', kind: 'skill-strong', label: 'talking', x: 60, y: 670 },
+  { id: 'igcaptions', kind: 'skill-growing', label: 'IG captions', x: 60, y: 720 },
+  { id: 'pricing', kind: 'skill-weak', label: 'pricing', x: 60, y: 770 },
+  { id: 'photography', kind: 'skill-weak', label: 'photography', x: 60, y: 820 },
+  { id: 'sewingMachine', kind: 'tool', label: 'sewing m/c', x: 140, y: 620 },
+  { id: 'fabric', kind: 'tool', label: 'fabric stash', x: 140, y: 680 },
+
+  // ── Network cluster (center-right) ───────────────────────
+  { id: 'you', kind: 'you', label: 'YOU', x: 180, y: 600 },
+  { id: 'jamie', kind: 'person', label: 'Jamie', sub: 'etsy expert', x: 280, y: 590 },
+  { id: 'coffee', kind: 'event', label: 'Coffee · Thu 3pm', x: 300, y: 660 },
+  { id: 'coworkers', kind: 'person-group', label: 'coworkers', x: 230, y: 700 },
+  { id: 'igAudience', kind: 'person-group', label: 'IG · ~400', x: 290, y: 740 },
+  { id: 'samK', kind: 'person', label: 'Sam K', sub: 'new follower', x: 310, y: 800 },
+
+  // ── Outputs / world (bottom-center) ──────────────────────
+  { id: 'etsy', kind: 'tool', label: 'Etsy', x: 180, y: 870 },
+  { id: 'listings', kind: 'thing', label: '3 listings', sub: '8 views · 0 sales', x: 100, y: 920 },
+  { id: 'igLaunch', kind: 'event', label: 'IG launch post', sub: '47 likes · 6 follows', x: 250, y: 920 },
+
+  // ── Intel + risk + pending (bottom-right) ────────────────
+  { id: 'compShops', kind: 'intel', label: '8 comp shops studied', x: 280, y: 1000 },
+  { id: 'audience', kind: 'audience', label: '22-30 arts crowd', sub: 'most promising', x: 130, y: 1000 },
+  { id: 'photoRisk', kind: 'risk', label: '⚠ photo quality risk', x: 200, y: 1060 },
+  { id: 'lightKit', kind: 'pending', label: 'lighting kit · $48', sub: 'pending', x: 100, y: 1130 },
+
+  // ── Finances (bottom-left) ───────────────────────────────
+  { id: 'budget', kind: 'money', label: 'Budget', sub: '$34 / $200 spent', x: 60, y: 1080 },
+  { id: 'priceBand', kind: 'intel', label: 'price $45 – $85', x: 60, y: 1160 },
+];
+
+export const canvasEdges = [
+  // ── Workflow river ───────────────────────────────────────
+  { from: 'goal', to: 's1', kind: 'flow' },
+  { from: 's1', to: 's2', kind: 'flow' },
+  { from: 's2', to: 's3', kind: 'flow' },
+  { from: 's3', to: 's4', kind: 'flow' },
+  { from: 's4', to: 's5', kind: 'flow-future' },
+  { from: 's5', to: 's6', kind: 'flow-future' },
+
+  // ── Active step leverages ────────────────────────────────
+  { from: 'drawing', to: 's4', kind: 'leverage' },
+  { from: 'ipad', to: 's4', kind: 'leverage' },
+  { from: 'timePM', to: 's4', kind: 'leverage' },
+
+  // ── Past steps produced things in the world ──────────────
+  { from: 's3', to: 'igLaunch', kind: 'produced' },
+  { from: 's2', to: 'audience', kind: 'produced' },
+
+  // ── Skills & tools — anchored on YOU ─────────────────────
+  { from: 'you', to: 'drawing', kind: 'has' },
+  { from: 'you', to: 'sewing', kind: 'has' },
+  { from: 'you', to: 'talking', kind: 'has' },
+  { from: 'you', to: 'igcaptions', kind: 'has' },
+  { from: 'you', to: 'pricing', kind: 'has-weak' },
+  { from: 'you', to: 'photography', kind: 'has-weak' },
+  { from: 'you', to: 'ipad', kind: 'has' },
+  { from: 'you', to: 'sewingMachine', kind: 'has' },
+  { from: 'you', to: 'fabric', kind: 'has' },
+
+  // ── Network ──────────────────────────────────────────────
+  { from: 'you', to: 'jamie', kind: 'knows' },
+  { from: 'jamie', to: 'coffee', kind: 'scheduled' },
+  { from: 'you', to: 'coworkers', kind: 'knows' },
+  { from: 'you', to: 'igAudience', kind: 'reaches' },
+  { from: 'igLaunch', to: 'samK', kind: 'produced' },
+  { from: 'igLaunch', to: 'igAudience', kind: 'reaches' },
+
+  // ── Etsy/listings ────────────────────────────────────────
+  { from: 'etsy', to: 'listings', kind: 'hosts' },
+  { from: 'jamie', to: 'etsy', kind: 'expert-in' },
+
+  // ── Intel & risk ─────────────────────────────────────────
+  { from: 'compShops', to: 'photoRisk', kind: 'derives' },
+  { from: 'compShops', to: 'priceBand', kind: 'derives' },
+  { from: 'compShops', to: 'audience', kind: 'derives' },
+  { from: 'listings', to: 'photoRisk', kind: 'related' },
+  { from: 'lightKit', to: 'photoRisk', kind: 'addresses' },
+  { from: 'lightKit', to: 'budget', kind: 'costs' },
+  { from: 'photography', to: 'photoRisk', kind: 'related' },
+];
+
+// ── Step detail (opens when active step is tapped) ─────────
+export const mockStepDetail = {
+  s4: {
+    title: 'Sketch 3 bucket hat concepts',
+    durationMin: 30,
+    agency: 'you',
+    tool: 'iPad / paper',
+    blurb:
+      "I'll critique each when you're done, and we'll pick the one to actually make.",
+    whyThis: [
+      'You rated illustrated bucket hats as the strongest direction Monday.',
+      "Your drawing skill is the highest-leverage asset for this goal.",
+      'Three sketches gives us enough range to compare without over-committing.',
+    ],
+    leverages: ['drawing', 'ipad', 'timePM'],
+  },
+};
+
+// ── Node detail (drill-down) ───────────────────────────────
+export const mockNodeDetail = {
+  jamie: {
+    title: 'Jamie',
+    subtitle: 'etsy expert · met through coworker Lia',
+    sections: [
+      {
+        heading: 'Thread',
+        items: [
+          {
+            when: 'Sat 4 PM',
+            actor: 'you',
+            draftedByAi: true,
+            body:
+              "hey jamie — lia mentioned you've been running an etsy shop for a while. i'm setting one up for hand-drawn hats and could really use 20 min of your eyes on it. happy to buy coffee thurs or fri.",
+          },
+          {
+            when: 'Sat 6 PM',
+            actor: 'them',
+            body:
+              "haha yes happy to. send me the listings when you have them up and let's grab coffee thurs.",
+          },
+          {
+            when: 'Wed 11 AM',
+            actor: 'you',
+            draftedByAi: true,
+            body:
+              "listings are live: [link to 3 etsy listings]\nphotos are rough — that's actually what i wanted your take on first. see you thurs.",
+          },
+        ],
+      },
+      {
+        heading: 'Upcoming',
+        items: [{ kind: 'note', text: 'Coffee · Thursday 3 PM · Big Sky Cafe' }],
+      },
+      {
+        heading: 'AI notes about Jamie',
+        items: [
+          { kind: 'bullet', text: 'Responsive (~2h reply time)' },
+          {
+            kind: 'bullet',
+            text:
+              "Direct, doesn't soft-pedal feedback (good for the photography critique you need).",
+          },
+          { kind: 'bullet', text: 'Knows etsy SEO well — ask about tags.' },
+        ],
+      },
+    ],
+  },
+  photoRisk: {
+    title: 'Photo quality risk',
+    subtitle: 'derived from comp shops studied',
+    sections: [
+      {
+        heading: 'Why this matters',
+        items: [
+          {
+            kind: 'bullet',
+            text:
+              'Comp shops with similar photo quality have 3x your view-to-favorite rate.',
+          },
+          {
+            kind: 'bullet',
+            text:
+              "Listings are live but underperforming — 8 views, 0 favorites in 2 days.",
+          },
+        ],
+      },
+      {
+        heading: 'What addresses this',
+        items: [
+          { kind: 'note', text: 'Lighting kit · $48 · pending your approval' },
+          { kind: 'note', text: 'Jamie\'s feedback Thursday (she\'s direct)' },
+        ],
+      },
+    ],
+  },
+  lightKit: {
+    title: 'Lighting kit · $48 · pending',
+    subtitle: 'AI wants to order this',
+    sections: [
+      {
+        heading: 'Why',
+        items: [
+          {
+            kind: 'bullet',
+            text:
+              'Addresses the photography risk flag — comp shops with similar photo quality have 3x your view-to-favorite rate.',
+          },
+          { kind: 'bullet', text: 'Reversible (returnable).' },
+        ],
+      },
+      {
+        heading: 'Decide',
+        items: [
+          { kind: 'action', label: "I'll order" },
+          { kind: 'action', label: 'AI orders' },
+          { kind: 'action', label: 'Skip' },
+        ],
+      },
+    ],
+  },
+};
+
+// ── Chat messages (for the drawer) ─────────────────────────
 export const mockMessages = [
   {
     id: 'm1',
     day: 'Mon, May 18',
     time: '2:14 PM',
     sender: 'ai',
-    body: 'Pulled together 8 product directions I think overlap with your sewing + drawing combo. Skim them and tell me which 3 feel most like you.',
-    actions: [{ label: 'View 8 directions' }],
+    body:
+      'Pulled 8 product directions that overlap with your sewing + drawing combo. Skim and tell me which 3 feel most like you.',
   },
   {
     id: 'm2',
     day: 'Mon, May 18',
     time: '2:31 PM',
     sender: 'you',
-    body: 'Locked: #2 (illustrated bucket hats), #4 (embroidered caps), #7 (custom drawn beanies). Rated each 4-5 stars. Note on #2: "love this most."',
+    body:
+      'Locked: #2 (illustrated bucket hats), #4 (embroidered caps), #7 (custom drawn beanies). Note on #2: "love this most."',
   },
   {
     id: 'm3',
     day: 'Mon, May 18',
     time: '2:32 PM',
     sender: 'ai',
-    body: "Good signal. All three reward your drawing skill, which is rarer than sewing. I updated your Situation: \"drawing time per piece\" → high.",
-    actions: [{ label: 'View update' }],
+    body:
+      'All three reward drawing. Updated your Situation: "drawing time per piece" → high.',
   },
   {
     id: 'm4',
-    day: 'Wed, May 20',
-    time: '11:14 AM',
-    sender: 'ai',
-    body: 'Two caption options for your launch post:',
-    critique: {
-      options: [
-        {
-          id: 'A',
-          label: 'Option A',
-          body: "hats for people who don't usually wear hats.\nhand-drawn, hand-sewn, one of one.\nstarting at $58 — link in bio.",
-        },
-        {
-          id: 'B',
-          label: 'Option B',
-          body: "if you've ever stared at a plain hat thinking \"this could be art\": that's the brief.\neach one drawn by hand. each one only made once.\n$58 to start. link below.",
-        },
-      ],
-      defaultRatings: { A: 3, B: 5 },
-      defaultNote: 'B is more me. A feels generic. cut "this could be art" though — too try-hard.',
-    },
-  },
-  {
-    id: 'm5',
     day: 'Today',
     time: '9:02 AM',
     sender: 'ai',
-    body: null,
-    step: {
-      title: 'Sketch 3 bucket hat concepts',
-      durationMin: 30,
-      agency: 'you',
-      tool: 'iPad / paper',
-      blurb: "I'll critique each when you're done, and we'll pick the one to actually make.",
-      whyThis: [
-        'You rated illustrated bucket hats as the strongest direction Monday.',
-        "Your drawing skill is the highest-leverage asset for this goal — we need to use it before we sew.",
-        'Three sketches gives us enough range to compare without making you over-commit.',
-      ],
-      leverages: ['Skill: drawing', 'Tool: iPad+Procreate', 'Time block: weekday PM'],
-    },
+    body:
+      "Next move: sketch 3 bucket hat concepts. Tap the active step on the canvas — I'll show you why this and what it touches.",
   },
 ];
-
-export const mockSituation = {
-  timeEnergy: {
-    summary: '~10h / week available',
-    rows: [
-      ['Best window', 'weekday afternoons'],
-      ['This week', '6h logged (under)'],
-    ],
-    calendar: [
-      { day: 'Thu', time: '3:00 PM', what: 'Coffee with Jamie', byAi: true, approved: true },
-      { day: 'Sat', time: '10:00 AM', what: 'Studio block — sewing prototype', byAi: false, approved: true },
-      { day: 'Sun', time: '—', what: 'No commitments', byAi: false, approved: true, soft: true },
-    ],
-    pendingCount: 1,
-  },
-  skillsToolkit: {
-    strong: ['sewing', 'drawing', 'in-person talking'],
-    growing: ['instagram captions', 'etsy listings'],
-    weak: ['pricing', 'product photography'],
-    toolkit: ['sewing machine', 'iPad + Procreate', 'Instagram (~400)', 'fabric stash'],
-    activity: [
-      { date: 'Mon', what: '3 bucket hat sketches saved', tool: 'Procreate' },
-      { date: 'Tue', what: 'Prototype 1 built', tool: 'Sewing m/c' },
-      { date: 'Wed', what: 'Launch post live', tool: 'Instagram' },
-      { date: 'Wed', what: '3 listings live', tool: 'Etsy' },
-    ],
-    pendingCount: 1,
-  },
-  finances: {
-    rows: [
-      ['Budget', '<$200 / month'],
-      ['Spent', '$34'],
-      ['Goal', 'Break even by month 3'],
-    ],
-    moneyOut: [
-      { date: 'Sat', what: 'Fabric (canvas + lining)', amount: '$22.40', actor: 'you' },
-      { date: 'Mon', what: 'Etsy listing fees (3)', amount: '$0.60', actor: 'ai' },
-      { date: 'Mon', what: 'Domain: bradymakes.co', amount: '$11.00', actor: 'you' },
-    ],
-    moneyIn: [],
-    pendingPurchase: {
-      name: 'Lighting kit for product photos',
-      amount: '$48',
-      reason: 'Addresses the photography risk flag.',
-    },
-  },
-  network: {
-    people: [
-      {
-        id: 'jamie',
-        name: 'Jamie',
-        tag: 'etsy expert',
-        status: 'Warm thread open',
-        lastTouched: '2d ago',
-        preview: '"happy to look at your listings when ready"',
-      },
-      {
-        id: 'coworkers',
-        name: 'Coworkers',
-        tag: '4 people',
-        status: 'No open threads',
-        lastTouched: '6d ago',
-      },
-      {
-        id: 'instagram',
-        name: 'Instagram audience',
-        tag: '~400 followers',
-        status: '2 unread DMs',
-        lastTouched: 'just now',
-      },
-    ],
-    pendingOutreach: 1,
-  },
-  goalIntel: {
-    audienceCandidates: [
-      { label: '22-30 urban arts crowd', tag: 'most promising' },
-      { label: 'festival circuit', tag: 'seasonal' },
-      { label: 'outdoor / regen ag', tag: 'your interest' },
-    ],
-    priceBand: '$45 – $85',
-    compShopsStudied: 8,
-    riskFlag:
-      'Product photography is the most common reason comp shops underperform.',
-    outbound: [
-      {
-        date: 'Wed 9 AM',
-        what: 'IG launch post',
-        stats: '47 likes · 3 comments · 6 follows',
-        signal: 'bucket hat #2 got most comments',
-      },
-      {
-        date: 'Wed 11 AM',
-        what: 'Etsy listings (3)',
-        stats: '8 views · 0 favorites · 0 sales',
-        signal: 'low view-to-favorite suggests photos',
-      },
-      {
-        date: 'Tue 4 PM',
-        what: 'DM-back to follower asking about custom',
-        stats: 'reply: "yes please, just emailed you"',
-        signal: 'created new Network entry: Sam K',
-      },
-    ],
-    pendingPosts: 2,
-  },
-};
-
-export const mockJamie = {
-  name: 'Jamie',
-  tag: 'etsy expert, met through coworker Lia',
-  bestContact: 'text',
-  relationship: 'Warm',
-  owes: 'Owes you nothing',
-  thread: [
-    {
-      when: 'Sat 4 PM',
-      actor: 'you',
-      draftedByAi: true,
-      body:
-        "hey jamie — lia mentioned you've been running an etsy shop for a while. i'm setting one up for hand-drawn hats and could really use 20 min of your eyes on it. happy to buy coffee thurs or fri.",
-    },
-    {
-      when: 'Sat 6 PM',
-      actor: 'them',
-      body:
-        "haha yes happy to. send me the listings when you have them up and let's grab coffee thurs.",
-    },
-    {
-      when: 'Wed 11 AM',
-      actor: 'you',
-      draftedByAi: true,
-      body:
-        "listings are live: [link to 3 etsy listings]\nphotos are rough — that's actually what i wanted your take on first. see you thurs.",
-    },
-  ],
-  upcoming: { what: 'Coffee', when: 'Thursday 3 PM', where: 'Big Sky Cafe' },
-  notes: [
-    'Responsive (~2h reply time)',
-    "Direct, doesn't soft-pedal feedback (good for the photography critique you need).",
-    'Knows etsy SEO well — ask about tags.',
-  ],
-};
 
 export const mockPending = [
   {
@@ -242,7 +313,7 @@ export const mockPending = [
     section: 'FINANCES',
     title: 'Purchase: Lighting kit, $48',
     blurb:
-      'Addresses the photography risk flag — comp shops with similar photo quality have 3x your view-to-favorite rate. Reversible (returnable).',
+      'Addresses the photography risk flag. Reversible (returnable).',
     actions: ["I'll order", 'AI orders', 'Skip'],
   },
 ];
