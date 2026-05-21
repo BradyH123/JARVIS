@@ -381,6 +381,46 @@ textarea { font-family: inherit; outline: none; }
   }
 }
 
+/* ── Mobile (phone) tuning ────────────────────────────────── */
+@media (max-width: 640px) {
+  .header {
+    padding: 10px 14px;
+  }
+  .header-title { font-size: 17px; }
+  .header-meta { font-size: 11px; }
+  .pill-btn { padding: 6px 11px; font-size: 12px; }
+  .pill-btn .badge { font-size: 10px; padding: 2px 6px; }
+
+  .chat-thread { padding: 14px 16px 18px; }
+  .input-bar { padding: 10px 16px 12px; }
+  .input-bar-inner { gap: 6px; }
+
+  .msg { padding: 12px 14px; font-size: 14px; }
+  .msg-action-row { gap: 6px; }
+
+  .step-card { padding: 18px 16px 16px; border-radius: 14px; }
+  .step-title { font-size: 17px; }
+  .step-actions { gap: 6px; }
+  .primary-btn, .ghost-btn { padding: 8px 14px; font-size: 12.5px; }
+
+  .panel-header { padding: 12px 14px; }
+  .panel-body { padding: 12px; }
+  .widget { padding: 12px 14px; border-radius: 12px; }
+
+  .activity-row { grid-template-columns: 64px 1fr; }
+  .activity-row .activity-actor { grid-column: 2; font-size: 10px; }
+
+  .chip-label { width: 52px; font-size: 9.5px; }
+
+  .drill-inner { width: 100%; }
+  .drill-body { padding: 16px 18px 28px; }
+
+  .tray-body { padding: 6px 16px 14px; }
+  .tray-header, .tray-footer { padding: 14px 18px; }
+
+  .modal-card { width: 100%; }
+}
+
 .panel-header {
   padding: 16px 20px;
   border-bottom: 1px solid #e8e2d7;

@@ -1,12 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ChatSurface from './ChatSurface';
 import SituationPanel from './SituationPanel';
 import PendingTray from './PendingTray';
 import { mockGoal, mockMessages, mockPending } from './mockData';
 
+function isWideScreen() {
+  if (typeof window === 'undefined') return true;
+  return window.matchMedia('(min-width: 1080px)').matches;
+}
+
 export default function App() {
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(() => isWideScreen());
   const [trayOpen, setTrayOpen] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1080px)');
+    const handler = (e) => {
+      // On resize across the breakpoint, snap to the sensible default.
+      setPanelOpen(e.matches);
+    };
+    mq.addEventListener?.('change', handler);
+    return () => mq.removeEventListener?.('change', handler);
+  }, []);
 
   return (
     <div className="app">
@@ -29,7 +44,7 @@ export default function App() {
             className="pill-btn"
             onClick={() => setPanelOpen((v) => !v)}
           >
-            {panelOpen ? 'Hide Situation' : 'Situation →'}
+            {panelOpen ? 'Hide' : 'Situation →'}
           </button>
         </div>
       </header>
