@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import coach from './coach';
 
 export default function ClarifyForm({ problem, classification, questions, onSubmit, onBack }) {
   const [answers, setAnswers] = useState({});
+  const hiddenSubtasks = coach.timeAudit(classification);
 
   const update = (id, value) => setAnswers((a) => ({ ...a, [id]: value }));
 
@@ -46,20 +48,37 @@ export default function ClarifyForm({ problem, classification, questions, onSubm
                 />
               )}
               {q.type === 'choice' && (
-                <div className="choices">
-                  {q.options.map((opt) => (
-                    <button
-                      type="button"
-                      key={opt}
-                      className={`choice ${
-                        answers[q.id] === opt ? 'choice-active' : ''
-                      }`}
-                      onClick={() => update(q.id, opt)}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  <div className="choices">
+                    {q.options.map((opt) => (
+                      <button
+                        type="button"
+                        key={opt}
+                        className={`choice ${
+                          answers[q.id] === opt ? 'choice-active' : ''
+                        }`}
+                        onClick={() => update(q.id, opt)}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                  {q.id === 'timebox' && answers[q.id] && (
+                    <div className="time-audit">
+                      <div className="time-audit-title">
+                        ⏱️ Reality check — people doing {classification.label.toLowerCase()} tasks usually forget:
+                      </div>
+                      <ul className="time-audit-list">
+                        {hiddenSubtasks.map((s, i) => (
+                          <li key={i}>{s}</li>
+                        ))}
+                      </ul>
+                      <div className="time-audit-tip">
+                        Add ~50% if you want to land on time.
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ))}
