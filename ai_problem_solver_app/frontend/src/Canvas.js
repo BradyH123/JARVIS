@@ -30,7 +30,26 @@ function highlightSet(activeId) {
   return { nodes, edges };
 }
 
+function moneyChip(node) {
+  // Revenue chip wins over cost (an inquiry step has $0 cost but +revenue
+  // upside — show the upside).
+  if (node.revenue) {
+    if (node.revenue.tbd) {
+      return { className: 'money-chip money-chip-in', text: '+ TBD' };
+    }
+    return {
+      className: 'money-chip money-chip-in',
+      text: `+ $${node.revenue.low}–${node.revenue.high}`,
+    };
+  }
+  if (typeof node.cost === 'number' && node.cost > 0) {
+    return { className: 'money-chip money-chip-out', text: `– $${node.cost}` };
+  }
+  return null;
+}
+
 function NodeShell({ node, refSetter, onTap, dimmed, highlighted, isActiveSel }) {
+  const chip = moneyChip(node);
   const className = [
     'cnode',
     `cnode-${node.kind}`,
@@ -52,6 +71,7 @@ function NodeShell({ node, refSetter, onTap, dimmed, highlighted, isActiveSel })
     >
       <div className="cnode-label">{node.label}</div>
       {node.sub && <div className="cnode-sub">{node.sub}</div>}
+      {chip && <div className={chip.className}>{chip.text}</div>}
     </div>
   );
 }
@@ -92,17 +112,24 @@ function Edge({ from, to, kind, highlighted, dimmed }) {
 
 function StepSheet({ stepId, onClose, onOpenChat }) {
   const detail = mockStepDetail[stepId];
+  const node = canvasNodes.find((n) => n.id === stepId);
   if (!detail) return null;
+  const chip = node ? moneyChip(node) : null;
   return (
     <div className="sheet" onClick={onClose}>
       <div className="sheet-inner" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-handle" />
-        <div className="sheet-tag">NEXT STEP</div>
+        <div className="sheet-tag">{detail.front || 'NEXT STEP'}</div>
         <div className="sheet-title">{detail.title}</div>
         <div className="sheet-meta">
           ~{detail.durationMin} min · <span className="agency-you">YOU do this</span> ·{' '}
           {detail.tool}
         </div>
+        {chip && (
+          <div className={`sheet-money ${chip.className.includes('in') ? 'money-in' : 'money-out'}`}>
+            {chip.text} · {node.revenue ? node.revenue.label : 'cost'}
+          </div>
+        )}
         {detail.blurb && <div className="sheet-blurb">{detail.blurb}</div>}
         <div className="sheet-subhead">Why this</div>
         <ul className="why-list">

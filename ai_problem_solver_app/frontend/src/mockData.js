@@ -27,6 +27,23 @@ export const mockGoal = {
   frontsInMotion: 4,
 };
 
+// ── Money state (always visible — backbone of the service) ──
+// Every dollar in this app is tracked. The money strip shows:
+//   what's spent · what's committed but not paid · what's left ·
+//   what we're earning toward.
+export const mockMoney = {
+  spent: 34,           // already out the door
+  pending: 48,         // committed but awaiting approval (lighting kit)
+  budget: 200,         // total budget for this goal
+  pricePerSale: { low: 45, high: 85 },
+  breakEvenSales: 1,   // approx: 1 sale roughly covers spend-to-date
+  goalRevenue: null,   // not set yet — AI will propose
+  transactions: [
+    { when: 'Sat', label: '5yd organic cotton', amount: -25 },
+    { when: 'Tue', label: 'Etsy listing fees', amount: -9 },
+  ],
+};
+
 export const DESIGN_W = 360;
 
 export const canvasNodes = [
@@ -59,9 +76,10 @@ export const canvasNodes = [
     sub: '~30 min · YOU',
     x: 280,
     y: 140,
+    cost: 0,
   },
-  { id: 'd4', kind: 'step-upcoming', label: 'Pick the one', x: 320, y: 65 },
-  { id: 'd5', kind: 'step-upcoming', label: 'Sew prototype', x: 230, y: 35 },
+  { id: 'd4', kind: 'step-upcoming', label: 'Pick the one', x: 320, y: 65, cost: 0 },
+  { id: 'd5', kind: 'step-upcoming', label: 'Sew prototype', x: 230, y: 35, cost: 8 },
   // Supporting assets
   { id: 'drawing', kind: 'skill-strong', label: 'drawing', x: 200, y: 200 },
   { id: 'ipad', kind: 'tool', label: 'iPad+Procreate', x: 200, y: 245 },
@@ -71,8 +89,8 @@ export const canvasNodes = [
   // ────────────────────────────────────────────────────────
   // CUSTOMERS front (NW) — audience + network
   // ────────────────────────────────────────────────────────
-  { id: 'c1', kind: 'step-done', label: '8 comp shops', x: 80, y: 270 },
-  { id: 'c2', kind: 'step-done', label: 'Initial audience', x: 45, y: 220 },
+  { id: 'c1', kind: 'step-done', label: '8 comp shops', x: 80, y: 270, cost: 0 },
+  { id: 'c2', kind: 'step-done', label: 'Initial audience', x: 45, y: 220, cost: 0 },
   {
     id: 'c3',
     kind: 'step-active',
@@ -80,8 +98,9 @@ export const canvasNodes = [
     sub: 'YOU · Big Sky Cafe',
     x: 80,
     y: 140,
+    cost: 12,
   },
-  { id: 'c4', kind: 'step-upcoming', label: 'Reply to Sam K', x: 45, y: 65 },
+  { id: 'c4', kind: 'step-upcoming', label: 'Reply to Sam K', x: 45, y: 65, cost: 0 },
   // Supporting assets
   { id: 'jamie', kind: 'person', label: 'Jamie', sub: 'etsy expert', x: 155, y: 145 },
   { id: 'samK', kind: 'person', label: 'Sam K', sub: 'new follower', x: 130, y: 75 },
@@ -91,9 +110,9 @@ export const canvasNodes = [
   // ────────────────────────────────────────────────────────
   // PRESENCE front (SE) — where you sell
   // ────────────────────────────────────────────────────────
-  { id: 'p1', kind: 'step-done', label: 'Setup Etsy', x: 285, y: 555 },
-  { id: 'p2', kind: 'step-done', label: 'Post 3 listings', x: 320, y: 610 },
-  { id: 'p3', kind: 'step-done', label: 'IG launch · 47 likes', x: 325, y: 685 },
+  { id: 'p1', kind: 'step-done', label: 'Setup Etsy', x: 285, y: 555, cost: 0 },
+  { id: 'p2', kind: 'step-done', label: 'Post 3 listings', x: 320, y: 610, cost: 9 },
+  { id: 'p3', kind: 'step-done', label: 'IG launch · 47 likes', x: 325, y: 685, cost: 0 },
   {
     id: 'p4',
     kind: 'step-active',
@@ -101,8 +120,10 @@ export const canvasNodes = [
     sub: 'AI drafted · approve to send',
     x: 285,
     y: 770,
+    cost: 0,
+    revenue: { low: 60, high: 120, label: 'custom order' },
   },
-  { id: 'p5', kind: 'step-upcoming', label: 'Reshoot listings', x: 220, y: 845 },
+  { id: 'p5', kind: 'step-upcoming', label: 'Reshoot listings', x: 220, y: 845, cost: 0 },
   // Supporting assets
   { id: 'etsy', kind: 'tool', label: 'Etsy', x: 215, y: 575 },
   { id: 'listings', kind: 'thing', label: '3 listings · 8 views', x: 215, y: 645 },
@@ -113,7 +134,7 @@ export const canvasNodes = [
   // ────────────────────────────────────────────────────────
   // MONEY front (SW) — pricing + budget
   // ────────────────────────────────────────────────────────
-  { id: 'm1', kind: 'step-done', label: '$200 budget set', x: 80, y: 555 },
+  { id: 'm1', kind: 'step-done', label: '$200 budget set', x: 80, y: 555, cost: 0 },
   {
     id: 'm2',
     kind: 'step-active',
@@ -121,9 +142,26 @@ export const canvasNodes = [
     sub: 'YOU decide · reversible',
     x: 60,
     y: 660,
+    cost: 48,
   },
-  { id: 'm3', kind: 'step-upcoming', label: 'Set price band $45-85', x: 90, y: 745 },
-  { id: 'm4', kind: 'step-upcoming', label: 'Track 1st sale margin', x: 135, y: 820 },
+  {
+    id: 'm3',
+    kind: 'step-upcoming',
+    label: 'Set price band $45-85',
+    x: 90,
+    y: 745,
+    cost: 0,
+    revenue: { low: 45, high: 85, label: 'per hat' },
+  },
+  {
+    id: 'm4',
+    kind: 'step-upcoming',
+    label: 'Track 1st sale margin',
+    x: 135,
+    y: 820,
+    cost: 0,
+    revenue: { tbd: true, label: 'unlocks first revenue' },
+  },
   // Supporting assets
   { id: 'budget', kind: 'money', label: 'Budget $34/$200', x: 155, y: 580 },
   { id: 'lightKit', kind: 'pending', label: 'lighting kit $48', sub: 'pending', x: 25, y: 705 },

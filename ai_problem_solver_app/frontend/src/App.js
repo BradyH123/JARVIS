@@ -2,7 +2,37 @@ import React, { useState } from 'react';
 import Canvas from './Canvas';
 import ChatDrawer from './ChatDrawer';
 import PendingTray from './PendingTray';
-import { mockGoal, mockPending } from './mockData';
+import { mockGoal, mockPending, mockMoney } from './mockData';
+
+function MoneyStrip() {
+  const { spent, pending, budget, pricePerSale, breakEvenSales } = mockMoney;
+  const remaining = budget - spent - pending;
+  return (
+    <div className="money-strip">
+      <div className="money-cell">
+        <span className="money-cell-label">spent</span>
+        <span className="money-cell-val money-out">${spent}</span>
+      </div>
+      <div className="money-divider" />
+      <div className="money-cell">
+        <span className="money-cell-label">pending</span>
+        <span className="money-cell-val money-pending">${pending}</span>
+      </div>
+      <div className="money-divider" />
+      <div className="money-cell">
+        <span className="money-cell-label">of ${budget} left</span>
+        <span className="money-cell-val">${remaining}</span>
+      </div>
+      <div className="money-divider" />
+      <div className="money-cell money-cell-target">
+        <span className="money-cell-label">→ next sale</span>
+        <span className="money-cell-val money-in">
+          ${pricePerSale.low}–${pricePerSale.high}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [chatOpen, setChatOpen] = useState(false);
@@ -26,6 +56,8 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      <MoneyStrip />
 
       <main className="canvas-scroll">
         <Canvas onOpenChat={() => setChatOpen(true)} />
