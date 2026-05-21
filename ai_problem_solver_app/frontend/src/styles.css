@@ -361,10 +361,19 @@ textarea { resize: vertical; min-height: 110px; line-height: 1.5; }
 .node-text { font-size: 0.95rem; line-height: 1.35; color: var(--text); }
 
 /* Type-specific */
+.node-dump {
+  width: 180px;
+  background: rgba(20, 27, 39, 0.6);
+  border-color: var(--border);
+  border-style: dashed;
+}
+.node-dump .node-icon { color: var(--muted); font-size: 0.85rem; }
+.node-dump .node-text { font-size: 0.88rem; color: var(--text); }
 .node-goal {
   background: linear-gradient(135deg, var(--card) 0%, var(--card-2) 100%);
   border-color: var(--accent);
   border-width: 2px;
+  border-style: solid;
   width: 280px;
 }
 .node-goal .node-text { font-size: 1.05rem; font-weight: 700; }
@@ -377,6 +386,40 @@ textarea { resize: vertical; min-height: 110px; line-height: 1.5; }
   border-color: rgba(74, 222, 128, 0.4);
 }
 .node-task .node-icon { color: var(--success); }
+
+/* AI-suggested nodes: dotted border, lower opacity, claim hint */
+.node.is-suggested {
+  border-style: dashed;
+  opacity: 0.7;
+  cursor: pointer;
+  background: rgba(125, 163, 255, 0.06);
+}
+.node.is-suggested:hover {
+  opacity: 1;
+  background: rgba(125, 163, 255, 0.12);
+  transform: translate(-50%, -50%) translate(var(--x,0), var(--y,0)) scale(1.03);
+}
+.node-badge {
+  margin-left: auto;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #0a1024;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+.node-claim-hint {
+  font-size: 0.7rem;
+  color: var(--accent);
+  margin-top: 2px;
+  font-style: italic;
+}
+
+.canvas-goal-empty {
+  color: var(--muted);
+  font-weight: 500;
+}
 
 /* Statuses */
 .node.status-done { opacity: 0.45; }

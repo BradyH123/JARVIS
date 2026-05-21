@@ -1,15 +1,13 @@
 import React, { useEffect, useState } from 'react';
 
-// A persistent overlay that always presents one prompt to the user.
-// Positioned as a bottom sheet on mobile and a right rail on desktop.
-
 export default function CoachOverlay({ prompt, onAnswer, onSkip }) {
   const [value, setValue] = useState('');
+  const [showOther, setShowOther] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
-  // Reset input when the prompt changes
   useEffect(() => {
     setValue('');
+    setShowOther(false);
   }, [prompt && prompt.id]);
 
   if (!prompt) return null;
@@ -19,11 +17,16 @@ export default function CoachOverlay({ prompt, onAnswer, onSkip }) {
     if (!v) return;
     onAnswer(v);
   };
+  const sendOther = () => {
+    const v = value.trim();
+    if (!v) return;
+    onAnswer('__other:' + v);
+  };
 
-  const onKeyDown = (e) => {
+  const onKeyDown = (e, isOther) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      send();
+      isOther ? sendOther() : send();
     }
   };
 
@@ -40,9 +43,12 @@ export default function CoachOverlay({ prompt, onAnswer, onSkip }) {
       <div className="coach-header">
         <div className="coach-avatar">●</div>
         <div className="coach-title">Coach</div>
+        {prompt.phase && (
+          <div className="coach-phase">{phaseLabel(prompt.phase)}</div>
+        )}
         {prompt.referencingNodeId && (
           <div className="coach-pointing" title="See the highlighted node">
-            ↗ referencing your map
+            ↗ pointing at your map
           </div>
         )}
       </div>
@@ -58,7 +64,7 @@ export default function CoachOverlay({ prompt, onAnswer, onSkip }) {
               type="text"
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              onKeyDown={onKeyDown}
+              onKeyDown={(e) => onKeyDown(e, false)}
               placeholder="Type your answer…"
             />
             <button className="primary" onClick={send} disabled={!value.trim()}>
@@ -75,15 +81,15 @@ export default function CoachOverlay({ prompt, onAnswer, onSkip }) {
                 type="text"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
-                onKeyDown={onKeyDown}
-                placeholder="Type to add — or tap skip…"
+                onKeyDown={(e) => onKeyDown(e, false)}
+                placeholder="Type to add — or skip…"
               />
               <button className="primary" onClick={send} disabled={!value.trim()}>
                 Send
               </button>
             </div>
             <button className="ghost small coach-skip" onClick={onSkip}>
-              skip — my map feels complete
+              {prompt.skipLabel || 'skip'}
             </button>
           </>
         )}
@@ -101,7 +107,63 @@ export default function CoachOverlay({ prompt, onAnswer, onSkip }) {
             ))}
           </div>
         )}
+
+        {prompt.type === 'choice-with-other' && (
+          <>
+            <div className="coach-choices">
+              {prompt.options.map((opt) => (
+                <button
+                  key={opt.value}
+                  className="coach-choice"
+                  onClick={() => onAnswer(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              <button
+                className="coach-choice coach-choice-other"
+                onClick={() => {
+                  if (prompt.otherValue) {
+                    onAnswer(prompt.otherValue);
+                  } else {
+                    setShowOther((s) => !s);
+                  }
+                }}
+              >
+                {prompt.otherLabel || 'Something else'}
+              </button>
+            </div>
+            {showOther && !prompt.otherValue && (
+              <div className="coach-input-row">
+                <input
+                  autoFocus
+                  type="text"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  onKeyDown={(e) => onKeyDown(e, true)}
+                  placeholder="Type today's focus…"
+                />
+                <button className="primary" onClick={sendOther} disabled={!value.trim()}>
+                  Use this
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
+}
+
+function phaseLabel(p) {
+  switch (p) {
+    case 'dump':    return 'dump';
+    case 'pick':    return 'pick focus';
+    case 'expand':  return 'expand';
+    case 'drill':   return 'drill in';
+    case 'execute': return 'execute';
+    case 'loop':    return 'loop';
+    case 'wrap':    return 'wrap';
+    default: return p;
+  }
 }

@@ -4,7 +4,7 @@ import CanvasNode from './CanvasNode';
 const CANVAS_W = 5000;
 const CANVAS_H = 5000;
 
-export default function Canvas({ nodes, highlightedNodeId, recentlyAddedId }) {
+export default function Canvas({ nodes, highlightedNodeId, recentlyAddedId, onClaimSuggestion }) {
   const containerRef = useRef(null);
   const rootNode = nodes.find((n) => n.type === 'goal');
 
@@ -89,6 +89,7 @@ export default function Canvas({ nodes, highlightedNodeId, recentlyAddedId }) {
             highlighted={highlightedNodeId === n.id}
             isActive={n.status === 'active'}
             justBorn={recentlyAddedId === n.id}
+            onClaim={onClaimSuggestion}
           />
         ))}
       </div>
