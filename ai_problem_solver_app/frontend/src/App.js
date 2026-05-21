@@ -1,99 +1,122 @@
-import React, { useState } from 'react';
-import ProblemInput from './ProblemInput';
+import React, { useEffect, useState, useCallback } from 'react';
+import Welcome from './Welcome';
 import BrainDump from './BrainDump';
-import ClarifyForm from './ClarifyForm';
-import FocusView from './FocusView';
+import DailyCheckIn from './DailyCheckIn';
+import Canvas from './Canvas';
 import coach from './coach';
+import { loadState, saveState, clearState, todayKey } from './storage';
 
-// Stages of the guided flow:
-//   input     -> user types a raw problem OR starts a brain dump
-//   dump      -> triage Now/Later/Trash (only if user chose brain dump)
-//   clarify   -> 2-3 questions to expand understanding (skipped from dump)
-//   focus     -> rolling "next step" loop with a live mind map
+// Stages:
+//   welcome -> first time greeting
+//   dump    -> full brain dump
+//   daily   -> "what's today's win?"
+//   canvas  -> the interactive map
 //
-// State is held here so the user can step back without losing work.
+// State shape persisted to localStorage:
+//   {
+//     onboarded: bool,
+//     brainDump: { rawText, buckets: {now,later,trash} },
+//     today: {
+//       date,            // 'YYYY-MM-DD'
+//       goal,            // string
+//       classification,  // {type,label,icon}
+//       meta,            // {energy, timebox}
+//       nodes,           // canvas nodes
+//     }
+//   }
 
 export default function App() {
-  const [stage, setStage] = useState('input');
-  const [problem, setProblem] = useState('');
-  const [dumpText, setDumpText] = useState('');
-  const [classification, setClassification] = useState(null);
-  const [questions, setQuestions] = useState([]);
-  const [plan, setPlan] = useState(null);
-  const [paralysis, setParalysis] = useState(false);
+  const [state, setState] = useState(() => loadState() || {});
+  const [stage, setStage] = useState(() => decideStage(loadState() || {}));
 
-  const handleProblemSubmit = (text) => {
-    const c = coach.classify(text);
-    setProblem(text);
-    setClassification(c);
-    setQuestions(coach.clarifyingQuestions(text, c));
-    setParalysis(coach.detectParalysis(text));
-    setStage('clarify');
-  };
+  function decideStage(s) {
+    if (!s.onboarded) return 'welcome';
+    if (!s.brainDump) return 'dump';
+    if (!s.today || s.today.date !== todayKey() || !s.today.goal) return 'daily';
+    return 'canvas';
+  }
 
-  const handleBrainDump = (text) => {
-    setDumpText(text);
+  // Persist any state change
+  useEffect(() => {
+    saveState(state);
+  }, [state]);
+
+  const beginDump = () => {
+    setState((s) => ({ ...s, onboarded: true }));
     setStage('dump');
   };
 
-  const handleDumpPick = (item) => {
-    // Skip clarify — the user is already overwhelmed. Go straight to focus
-    // with an auto-decomposition.
-    const c = coach.classify(item);
-    setProblem(item);
-    setClassification(c);
-    setParalysis(true); // they came in via dump → assume overwhelm
-    setPlan(coach.decompose(item, c, { outcome: item, timebox: '15 min' }));
-    setStage('focus');
+  const completeDump = ({ rawText, buckets }) => {
+    setState((s) => ({ ...s, brainDump: { rawText, buckets } }));
+    setStage('daily');
   };
 
-  const handleClarifySubmit = (answers) => {
-    setPlan(coach.decompose(problem, classification, answers));
-    setStage('focus');
+  const completeDaily = ({ goal, energy, timebox }) => {
+    const classification = coach.classify(goal);
+    setState((s) => ({
+      ...s,
+      today: {
+        date: todayKey(),
+        goal,
+        classification,
+        meta: { energy, timebox },
+        nodes: null, // canvas will build initial
+      },
+    }));
+    setStage('canvas');
   };
 
-  const restart = () => {
-    setStage('input');
-    setProblem('');
-    setDumpText('');
-    setClassification(null);
-    setQuestions([]);
-    setPlan(null);
-    setParalysis(false);
+  const persistNodes = useCallback((nodes) => {
+    setState((s) => {
+      if (!s.today) return s;
+      return { ...s, today: { ...s.today, nodes } };
+    });
+  }, []);
+
+  const newDay = () => {
+    if (!window.confirm('Reset everything (brain dump + today\'s map)?')) return;
+    clearState();
+    setState({});
+    setStage('welcome');
+  };
+
+  const changeGoal = () => {
+    setState((s) => ({ ...s, today: null }));
+    setStage('daily');
+  };
+
+  const redoDump = () => {
+    setState((s) => ({ ...s, brainDump: null }));
+    setStage('dump');
   };
 
   return (
     <div className="app">
-      {stage === 'input' && (
-        <ProblemInput
-          onSubmit={handleProblemSubmit}
-          onBrainDump={handleBrainDump}
-        />
-      )}
+      {stage === 'welcome' && <Welcome onBegin={beginDump} />}
       {stage === 'dump' && (
         <BrainDump
-          rawText={dumpText}
-          onPick={handleDumpPick}
-          onBack={() => setStage('input')}
+          initialText={state.brainDump ? state.brainDump.rawText : ''}
+          onComplete={completeDump}
+          onBack={state.onboarded ? () => setStage('daily') : null}
         />
       )}
-      {stage === 'clarify' && (
-        <ClarifyForm
-          problem={problem}
-          classification={classification}
-          questions={questions}
-          onSubmit={handleClarifySubmit}
-          onBack={() => setStage('input')}
+      {stage === 'daily' && (
+        <DailyCheckIn
+          buckets={state.brainDump ? state.brainDump.buckets : null}
+          onSubmit={completeDaily}
+          onSkipDump={redoDump}
         />
       )}
-      {stage === 'focus' && plan && (
-        <FocusView
-          problem={problem}
-          classification={classification}
-          plan={plan}
-          setPlan={setPlan}
-          paralysis={paralysis}
-          onRestart={restart}
+      {stage === 'canvas' && state.today && (
+        <Canvas
+          rootText={state.today.goal}
+          classification={state.today.classification}
+          initialNodes={state.today.nodes}
+          onPersist={persistNodes}
+          onNewDay={newDay}
+          onChangeGoal={changeGoal}
+          brainDump={state.brainDump ? state.brainDump.buckets : null}
+          meta={state.today.meta}
         />
       )}
     </div>

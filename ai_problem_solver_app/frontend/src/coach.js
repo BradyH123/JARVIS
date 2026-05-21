@@ -1,461 +1,238 @@
 // coach.js
 //
-// Rule-based stand-in for the AI coach. Each exported function corresponds
-// to one prompt you would later send to Claude:
-//
-//   classify(problem)             -> "Classify this problem"
-//   clarifyingQuestions(...)      -> "What should we ask the user next?"
-//   decompose(...)                -> "Break this into milestones + first micro-steps"
-//   expandMilestone(...)          -> "Break this milestone into 60-second actions"
-//   encouragement() / nudge()     -> "Reply to the user with a refocus / cheer"
-//
-// To swap in real Claude calls: replace the body of each function with an
-// Anthropic SDK call and keep the return shape identical.
+// Rule-based stand-in for the AI brain. It returns NODES that get added
+// to the canvas — questions, tasks, ideas, branches. Each function here
+// maps to one prompt that will later be sent to Claude.
 
-const PROBLEM_TYPES = {
-  learning: {
-    keywords: ['learn', 'understand', 'study', 'practice', 'memorize', 'class', 'homework', 'essay', 'paper', 'math', 'science', 'read', 'book', 'exam', 'test'],
-    label: 'Learning / Study',
-    icon: '📚',
-    milestoneTemplate: [
-      'Set up your space and gather the materials',
-      'Skim everything to get the big picture',
-      'Identify the 3 hardest concepts',
-      'Practice each concept with active recall',
-      'Test yourself and patch the gaps',
-    ],
-  },
-  creative: {
-    keywords: ['write', 'create', 'design', 'compose', 'art', 'story', 'paint', 'draw', 'video', 'music', 'song', 'poem', 'novel'],
-    label: 'Creative work',
-    icon: '🎨',
-    milestoneTemplate: [
-      'Brain-dump every idea (no judging)',
-      'Pick the ONE direction that excites you most',
-      'Make a rough draft / sketch — bad on purpose',
-      'Refine the parts that feel alive',
-      'Share it with one person',
-    ],
-  },
-  project: {
-    keywords: ['build', 'make', 'develop', 'code', 'app', 'website', 'launch', 'project', 'product', 'feature'],
-    label: 'Project / Build',
-    icon: '🛠️',
-    milestoneTemplate: [
-      'Write the one-sentence outcome',
-      'List the tools / materials you need',
-      'Build the smallest possible version',
-      'Use it once and note what feels broken',
-      'Fix the one thing that bothered you most',
-    ],
-  },
-  physical: {
-    keywords: ['clean', 'tidy', 'cook', 'exercise', 'workout', 'work out', 'fix', 'repair', 'install', 'move', 'laundry', 'dishes', 'declutter', 'room', 'gym'],
-    label: 'Physical / Real-world task',
-    icon: '💪',
-    milestoneTemplate: [
-      'Put on the clothes / shoes you need',
-      'Set a 10-minute timer — you can stop after',
-      'Touch the first physical thing',
-      'Work the timer; notice the momentum',
-      'Decide: stop or keep going',
-    ],
-  },
-  decision: {
-    keywords: ['should i', 'decide', 'choose', 'pick', 'whether', 'between', 'option'],
-    label: 'Decision',
-    icon: '🤔',
-    milestoneTemplate: [
-      'Write down the real options (be specific)',
-      'For each: 1 best case + 1 worst case',
-      'Mark which option future-you would thank you for',
-      'Name what you are afraid of, in one line',
-      'Pick — give yourself permission to be wrong',
-    ],
-  },
-  career: {
-    keywords: ['job', 'interview', 'resume', 'career', 'apply', 'application', 'cover letter', 'linkedin'],
-    label: 'Career',
-    icon: '💼',
-    milestoneTemplate: [
-      'Open the doc / app you need',
-      'Write the WORST possible first draft',
-      'Improve only the first paragraph',
-      'Submit it (it does not need to be perfect)',
-      'Note one thing to improve next time',
-    ],
-  },
-  planning: {
-    keywords: ['plan', 'organize', 'schedule', 'trip', 'event', 'party', 'wedding', 'meeting', 'calendar'],
-    label: 'Planning / Organizing',
-    icon: '🗓️',
-    milestoneTemplate: [
-      'Write the goal and the deadline',
-      'List the major pieces involved',
-      'Order them by what must come first',
-      'Block time on a calendar for the first piece',
-      'Do the first piece',
-    ],
-  },
-  default: {
-    keywords: [],
-    label: 'General task',
-    icon: '🎯',
-    milestoneTemplate: [
-      'Pick the smallest possible first action',
-      'Do that action for 2 minutes',
-      'Decide if you want to continue',
-      'Take one more small action',
-      'Note your progress, no matter how small',
-    ],
-  },
+const TYPES = {
+  learning: { label: 'Learning', icon: '📚' },
+  creative: { label: 'Creative', icon: '🎨' },
+  project:  { label: 'Project',  icon: '🛠️' },
+  physical: { label: 'Physical', icon: '💪' },
+  decision: { label: 'Decision', icon: '🤔' },
+  career:   { label: 'Career',   icon: '💼' },
+  planning: { label: 'Planning', icon: '🗓️' },
+  default:  { label: 'Goal',     icon: '🎯' },
 };
 
-// Every "first step" is intentionally physical: it tells you exactly
-// where to put your hands. This shatters task paralysis by giving the
-// body something to do before the brain catches up.
-const MICRO_STEPS_BY_TYPE = {
-  learning: [
-    'Sit down at a desk and put both hands flat on it',
-    'Open the material in front of you',
-    'Put your phone face-down or in another room',
-    'Pour water into a glass within arm\'s reach',
-    'Set a 25-minute timer and tap start',
-  ],
-  creative: [
-    'Open a blank page; put your fingers on the keyboard',
-    'Set a 5-minute timer and tap start',
-    'Type or sketch the first thing that comes to mind',
-    'Do NOT edit — keep your hands moving',
-    'When the timer ends, lift your hands and re-read',
-  ],
-  project: [
-    'Open the tool/app and put your hand on the trackpad',
-    'Type the goal sentence at the top',
-    'Type the 3 first concrete things you need',
-    'Click the easiest one',
-    'Start it — 60 seconds is enough',
-  ],
-  physical: [
-    'Stand up and put your hand on the doorframe',
-    'Put on the right clothes / shoes',
-    'Walk to where the task is',
-    'Touch the first physical thing involved',
-    'Move it / handle it for 60 seconds',
-  ],
-  decision: [
-    'Open notes and put your thumb on the screen',
-    'Type the question at the top',
-    'Type "Option A:" and one sentence',
-    'Type "Option B:" and one sentence',
-    'Type any other options that come up',
-  ],
-  career: [
-    'Open the doc and put your hands on the keyboard',
-    'Set a 10-minute timer and tap start',
-    'Type the worst possible first draft',
-    'Do NOT edit yet — keep typing',
-    'Save it (cmd/ctrl + S)',
-  ],
-  planning: [
-    'Open the calendar and tap on today',
-    'Type the deadline at the top',
-    'Brain-dump every piece involved',
-    'Circle the 3 most important',
-    'Pick which goes first',
-  ],
-  default: [
-    'Place both hands flat on the surface in front of you',
-    'Say the goal out loud, once',
-    'Pick the smallest possible first action',
-    'Do that action — 60 seconds max',
-    'Notice you started',
-  ],
+const KEYWORDS = {
+  learning: ['learn','understand','study','memorize','class','homework','essay','math','science','read','exam','test','practice'],
+  creative: ['write','create','design','compose','art','story','paint','draw','video','music','song','poem','novel'],
+  project:  ['build','make','develop','code','app','website','launch','project','product','feature','startup'],
+  physical: ['clean','tidy','cook','exercise','workout','fix','repair','install','move','laundry','dishes','declutter','room','gym'],
+  decision: ['should i','decide','choose','pick','whether','between','option'],
+  career:   ['job','interview','resume','career','apply','application','cover letter','linkedin'],
+  planning: ['plan','organize','schedule','trip','event','party','wedding','meeting','calendar'],
 };
 
-// Detect "task paralysis" wording so the focus view can re-frame the
-// first step as a ridiculously-small physical anchor.
-const PARALYSIS_SIGNALS = /\b(can'?t start|cannot start|staring at|overwhelm(ed|ing)?|stuck|paraly[sz]ed|frozen|don'?t know where|so much|too much|avoiding|procrastinat)\b/i;
-
-function detectParalysis(text) {
-  return PARALYSIS_SIGNALS.test(text || '');
-}
-
-function classify(problem) {
-  const text = (problem || '').toLowerCase();
-  let bestType = 'default';
-  let bestScore = 0;
-  for (const [type, data] of Object.entries(PROBLEM_TYPES)) {
-    const score = data.keywords.reduce(
-      (sum, kw) => sum + (text.includes(kw) ? 1 : 0),
-      0,
-    );
-    if (score > bestScore) {
-      bestScore = score;
-      bestType = type;
-    }
+function classify(text) {
+  const t = (text || '').toLowerCase();
+  let best = 'default', score = 0;
+  for (const [k, kws] of Object.entries(KEYWORDS)) {
+    const s = kws.reduce((n, w) => n + (t.includes(w) ? 1 : 0), 0);
+    if (s > score) { score = s; best = k; }
   }
-  const data = PROBLEM_TYPES[bestType];
-  return {
-    type: bestType,
-    label: data.label,
-    icon: data.icon,
-    confidence: bestScore > 0 ? 'high' : 'guess',
-  };
+  return { type: best, ...TYPES[best] };
 }
 
-function clarifyingQuestions(_problem, _classification) {
-  return [
-    {
-      id: 'outcome',
-      prompt: 'What does "done" look like? One sentence is enough.',
-      hint: 'Try: "I have ___ on my desk" or "I can explain ___ to someone".',
-      type: 'text',
-    },
-    {
-      id: 'timebox',
-      prompt: 'How much time do you want to give this right now?',
-      hint: 'Pick whatever feels doable. You can stop early.',
-      type: 'choice',
-      options: ['5 min', '15 min', '25 min', '1 hour', 'as long as it takes'],
-    },
-    {
-      id: 'unknown',
-      prompt: 'What is the biggest unknown — what do you NOT know yet?',
-      hint: 'It is OK to say "everything".',
-      type: 'text',
-    },
-  ];
-}
+// First physical move per type — "where to put your hands"
+const FIRST_TOUCH = {
+  learning: 'Sit down. Put both hands flat on the desk.',
+  creative: 'Open a blank page. Fingers on the keyboard.',
+  project:  'Open the tool. Hand on the trackpad.',
+  physical: 'Stand up. Walk to where the task is.',
+  decision: 'Open notes. Thumb on the screen.',
+  career:   'Open the doc. Hands on the keyboard.',
+  planning: 'Open the calendar. Tap on today.',
+  default:  'Both hands flat on the surface in front of you.',
+};
 
-function decompose(problem, classification, answers) {
-  const template = PROBLEM_TYPES[classification.type].milestoneTemplate;
-  const milestones = template.map((label, i) => ({
-    id: `m${i}`,
-    label,
-    status: 'pending',
-    steps: i === 0 ? expandMilestone(classification, 0) : [],
-  }));
-  return {
-    outcome: (answers && answers.outcome) || problem,
-    timebox: (answers && answers.timebox) || '25 min',
-    unknown: (answers && answers.unknown) || '',
-    milestones,
-  };
-}
+const FIVE_MIN_KICK = {
+  learning: 'Set a 5-min timer. Just skim the first page.',
+  creative: 'Set a 5-min timer. Type whatever lands — bad on purpose.',
+  project:  'Set a 5-min timer. Open the tool and type the goal at the top.',
+  physical: 'Set a 5-min timer. Move ONE physical thing.',
+  decision: 'Set a 5-min timer. List the options, even bad ones.',
+  career:   'Set a 5-min timer. Write the worst possible first sentence.',
+  planning: 'Set a 5-min timer. Brain-dump every piece involved.',
+  default:  'Set a 5-min timer. You can stop after.',
+};
 
-function expandMilestone(classification, milestoneIndex) {
-  // For v1 we only have a curated set of micro-steps per problem type,
-  // for the very first milestone. Later milestones get a generic but
-  // useful expansion based on their label.
-  if (milestoneIndex === 0) {
-    const steps =
-      MICRO_STEPS_BY_TYPE[classification.type] || MICRO_STEPS_BY_TYPE.default;
-    return steps.map((label, i) => ({ id: `s${i}`, label, status: 'pending' }));
-  }
-  // Generic micro-expansion for later milestones.
-  return [
-    { id: 's0', label: 'Re-read this milestone out loud', status: 'pending' },
-    { id: 's1', label: 'Set a 10-minute timer', status: 'pending' },
-    { id: 's2', label: 'Do the smallest version of this for 2 minutes', status: 'pending' },
-    { id: 's3', label: 'Notice what you got done', status: 'pending' },
-    { id: 's4', label: 'Decide: stop, continue, or refine', status: 'pending' },
-  ];
-}
-
-const ENCOURAGEMENTS = [
-  'You started. That is the hardest part.',
-  'One more small action — you have momentum.',
-  'Pause, breathe, then the next tiny step.',
-  'You do not have to do it perfectly. You have to do it.',
-  'Future-you will thank present-you for this.',
-  'Five more minutes. You can stop after.',
-  'Notice what you have already done.',
-  'The next step is small on purpose.',
-  'Done is better than perfect. Keep going.',
-];
+const ANGLES = {
+  learning: ['What\'s the ONE concept you keep avoiding?', 'What does the teacher actually grade?'],
+  creative: ['Whose work would you love this to feel like?', 'What part scares you most? Start there.'],
+  project:  ['What\'s the smallest version that would still be useful?', 'What part are you avoiding because it\'s boring?'],
+  physical: ['What\'s the one thing in the way?', 'What\'s the messiest spot? Start there.'],
+  decision: ['What\'s the worst case of option A?', 'Future-you 6 months out — what would they choose?'],
+  career:   ['Who could read this in 60 seconds and tell you the truth?', 'What\'s the ONE line that has to land?'],
+  planning: ['Who else needs to know?', 'What falls apart if one piece is late?'],
+  default:  ['What would make this easier?', 'What\'s the one thing you keep avoiding?'],
+};
 
 const NUDGES = [
-  'Still with me? What is the very next action?',
-  'If you are stuck, name what is in the way out loud.',
-  'Try this: do the next step for 60 seconds only.',
-  'It is OK to do a worse version. Just start.',
-  'Tap "Done" the moment you do it — even if it felt tiny.',
+  'Still with me? Tap the glowing one.',
+  'Don\'t think — just pick the next move.',
+  'One tiny action. Go.',
+  'Your map is waiting. Tap something.',
+];
+const CHEERS = [
+  'You did it. Momentum.',
+  'Stack another one.',
+  'Future-you is grateful.',
+  'That\'s real progress.',
+  'Keep the streak.',
 ];
 
-function pickRandom(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
+function pickRandom(a) { return a[Math.floor(Math.random() * a.length)]; }
+
+let _idCounter = 0;
+function nid() { _idCounter += 1; return `n_${Date.now().toString(36)}_${_idCounter}`; }
+
+// All node-generation functions return PARTIAL nodes (no id/x/y/parentId);
+// the canvas fills those in.
+function partial(type, text, opts = {}) {
+  return { type, text, ...opts };
 }
 
-// --- Time-Blindness audit: per-type "hidden sub-tasks people forget" ---
-// Used in the clarify form right after the user picks a timebox.
-const HIDDEN_SUBTASKS = {
-  learning: [
-    'Reviewing what you already know before starting',
-    'Taking a real break (not scrolling)',
-    'Going back to fix the thing you skipped',
-  ],
-  creative: [
-    'Staring at the wall while ideas land',
-    'Throwing out the bad first draft',
-    'Naming it / saving it properly',
-  ],
-  project: [
-    'Setting up the tools and environment',
-    'Reading the docs you keep avoiding',
-    'Cleanup / shutting things down',
-  ],
-  physical: [
-    'Walking to where the task is and back',
-    'Finding the thing you need (tape, scissors, etc.)',
-    'Putting it all away when done',
-  ],
-  decision: [
-    'Asking one person for input',
-    'Sitting with the choice for an hour',
-    'Telling someone what you decided',
-  ],
-  career: [
-    'Proofreading slowly',
-    'Customizing for the specific company / role',
-    'Following up after sending',
-  ],
-  planning: [
-    'Confirming with the other people involved',
-    'Building in buffer time',
-    'Backup plan if something falls through',
-  ],
-  default: [
-    'Setup time before the task',
-    'Interruptions you can\'t fully control',
-    'Cleanup / shutdown after',
-  ],
-};
-
-function timeAudit(classification) {
-  return HIDDEN_SUBTASKS[classification.type] || HIDDEN_SUBTASKS.default;
+// When the user first submits, spawn the initial tree.
+function generateInitial(rootText, c) {
+  return [
+    partial('question', 'In one sentence: what does "done" actually look like?', {
+      status: 'active',
+    }),
+    partial('task', FIRST_TOUCH[c.type], { status: 'pending' }),
+    partial('task', FIVE_MIN_KICK[c.type], { status: 'pending' }),
+    partial('idea', pickRandom(ANGLES[c.type] || ANGLES.default), { status: 'pending' }),
+    partial('question', 'How much time do you want to spend right now?', {
+      status: 'pending',
+      options: ['5 min', '15 min', '25 min', '1 hour', 'until done'],
+    }),
+  ];
 }
 
-// --- Quest framing: reframe a micro-step as a small game with a reward ---
-const QUEST_THEMES = [
-  { match: /\b(sit|stand|walk|put on|open|set up|gather)\b/i, title: 'Suit Up',           reward: '60 seconds of your favorite song' },
-  { match: /\b(timer|set a|minute|pomodoro)\b/i,              title: 'Set the Trap',      reward: 'a deep breath' },
-  { match: /\b(write|sketch|draft|dump|brain[- ]?dump)\b/i,   title: 'Brain Dump Quest',  reward: 'a long stretch' },
-  { match: /\b(decide|pick|choose|circle|mark)\b/i,           title: 'The Choice',        reward: 'tell someone what you picked' },
-  { match: /\b(read|skim|review|re-?read)\b/i,                title: 'Recon Mission',     reward: 'a sip of water' },
-  { match: /\b(practice|recall|test yourself|quiz)\b/i,       title: 'Boss Fight',        reward: 'one small celebration' },
-  { match: /\b(refine|improve|edit|polish|fix)\b/i,           title: 'Sharpen the Blade', reward: 'a 60-second pause' },
-  { match: /\b(share|send|submit|post|tell)\b/i,              title: 'Final Move',        reward: 'the relief of being done' },
-  { match: /\b(start|begin|move|touch|do)\b/i,                title: 'First Move',        reward: 'the satisfaction of starting' },
-];
+// When the user answers a question.
+function generateAfterAnswer(node, answer, c) {
+  const a = (answer || '').trim();
+  const short = a.length > 60 ? a.slice(0, 57) + '…' : a;
 
-function questFor(stepLabel) {
-  for (const q of QUEST_THEMES) {
-    if (q.match.test(stepLabel)) {
-      return { title: q.title, reward: q.reward };
-    }
+  // If it was the timebox question, surface hidden sub-tasks
+  if (node.options && node.options.some((o) => /min|hour|done/.test(o))) {
+    return [
+      partial('idea', `Heads up: ${c.label.toLowerCase()} tasks usually run 50% longer than you think. Build in a buffer.`, {
+        status: 'pending',
+      }),
+      partial('task', `Set a timer for ${a} and tap start.`, { status: 'active' }),
+    ];
   }
-  return { title: 'Side Quest', reward: 'a small win' };
+
+  // Outcome-style answer → translate into a concrete task
+  return [
+    partial('task', `Spend 2 minutes moving toward: "${short}"`, {
+      status: 'active',
+    }),
+    partial('question', 'What\'s the first concrete thing you need to make this happen?', {
+      status: 'pending',
+    }),
+  ];
 }
 
-// --- Brain dump triage: dump everything, get Now / Later / Trash buckets ---
-//
-// Heuristic categorization based on keywords. A real Claude call would do
-// this far better; this is just enough to make the UX feel intelligent.
-const NOW_SIGNALS = /\b(today|now|asap|urgent|due|deadline|tonight|this morning|this afternoon|tomorrow|this week|need to|have to|must)\b/i;
-const TRASH_SIGNALS = /\b(maybe|someday|might|could|wish|wonder|consider|eventually|if i|one day)\b/i;
+// When the user completes a task.
+function generateAfterTaskDone(_node, c) {
+  return [
+    partial('celebration', pickRandom(CHEERS), { status: 'pending' }),
+    partial('task', `Stack another tiny move: ${nextMicroFor(c)}`, { status: 'active' }),
+  ];
+}
+
+// When the user skips a task — give them an even smaller version.
+function generateAfterTaskSkipped(node, _c) {
+  return [
+    partial('task', `Smaller version: just look at it for 30 seconds.`, {
+      status: 'active',
+    }),
+    partial('idea', `Name what\'s in the way out loud, then come back.`, { status: 'pending' }),
+  ];
+}
+
+// When the user accepts an idea — promote it into a task.
+function generateAfterIdeaAccepted(node, _c) {
+  return [
+    partial('task', `Try it: ${node.text}`, { status: 'active' }),
+  ];
+}
+
+// Periodic nudge if the user goes idle.
+function generateNudge() {
+  return partial('question', pickRandom(NUDGES), { status: 'active' });
+}
+
+const NEXT_POOL = {
+  learning: ['Re-read what you just did.', 'Test yourself on one fact.', 'Find the next concept.'],
+  creative: ['Add one more sentence.', 'Re-read and circle one good line.', 'Take a 60-second pause.'],
+  project:  ['Use what you just built once.', 'Note one thing to fix.', 'Commit / save your work.'],
+  physical: ['Put away ONE item.', 'Move to the next spot.', 'Take a 30-second water break.'],
+  decision: ['Add one more pro or con.', 'Ask one person for input.', 'Sit with it for 60 seconds.'],
+  career:   ['Read what you wrote out loud.', 'Cut the worst sentence.', 'Save it.'],
+  planning: ['Block the time on a calendar.', 'Text one person about it.', 'Set a reminder.'],
+  default:  ['Do it again, smaller.', 'Take one breath.', 'Note what you learned.'],
+};
+function nextMicroFor(c) {
+  const pool = NEXT_POOL[c.type] || NEXT_POOL.default;
+  return pickRandom(pool);
+}
+
+// --- Brain dump triage ---
+const NOW_RX = /\b(today|now|asap|urgent|due|deadline|tonight|this morning|this afternoon|tomorrow|need to|have to|must|owe)\b/i;
+const TRASH_RX = /\b(maybe|someday|might|could|wish|wonder|consider|eventually|if i|one day)\b/i;
 
 function triageDump(text) {
-  const lines = (text || '')
+  const items = (text || '')
     .split(/[\n•]+/)
     .map((s) => s.replace(/^[-*•\d.\s]+/, '').trim())
     .filter((s) => s.length > 0);
-
-  const now = [];
-  const later = [];
-  const trash = [];
-
-  for (const line of lines) {
-    if (NOW_SIGNALS.test(line)) {
-      now.push(line);
-      continue;
-    }
-    if (TRASH_SIGNALS.test(line)) {
-      trash.push(line);
-      continue;
-    }
-    later.push(line);
+  const now = [], later = [], trash = [];
+  for (const it of items) {
+    if (NOW_RX.test(it)) now.push(it);
+    else if (TRASH_RX.test(it)) trash.push(it);
+    else later.push(it);
   }
-
-  return {
-    now: now.slice(0, 6),
-    later: later.slice(0, 10),
-    trash: trash.slice(0, 10),
-  };
+  return { now, later, trash };
 }
 
-// One-sentence "actionable next step" for a Now item (very simple version).
 function actionableNextStep(item) {
-  const lc = item.toLowerCase();
+  const lc = (item || '').toLowerCase();
   if (/email|message|text|reply|respond/.test(lc)) return 'Open the inbox and read the message once.';
-  if (/call|phone|ring/.test(lc)) return 'Pick up your phone and dial. You can hang up.';
-  if (/clean|tidy|dishes|laundry/.test(lc)) return 'Walk to the spot and touch one thing.';
-  if (/write|draft|essay/.test(lc)) return 'Open a blank doc and type the title.';
-  if (/study|read|learn/.test(lc)) return 'Open the material and read one paragraph.';
-  if (/buy|order|shop/.test(lc)) return 'Open the site and add one thing to the cart.';
-  return 'Spend 2 minutes on this. You can stop after.';
+  if (/call|phone|ring/.test(lc)) return 'Pick up your phone. You can hang up.';
+  if (/clean|tidy|dishes|laundry/.test(lc)) return 'Walk over and touch one thing.';
+  if (/write|draft|essay/.test(lc)) return 'Open a blank doc. Type the title.';
+  if (/study|read|learn/.test(lc)) return 'Open the material. Read one paragraph.';
+  if (/buy|order|shop/.test(lc)) return 'Open the site. Add one thing to the cart.';
+  if (/exercise|gym|workout|run/.test(lc)) return 'Put on the shoes. Stand up.';
+  return 'Spend 2 minutes on it. You can stop after.';
 }
 
-// --- Body Double mode: short check-in prompts every 10 minutes ---
-const BODY_DOUBLE_PROMPTS = [
-  'Hey — quick check-in. What are you working on right now?',
-  'Still here. Are you on the step we picked, or did you drift?',
-  'Eyes up. What did you get done in the last 10 minutes?',
-  'Tiny status update: one word is fine.',
-  'Checking in. Still moving?',
-];
-
-function bodyDoublePrompt() {
-  return pickRandom(BODY_DOUBLE_PROMPTS);
-}
-
-const BODY_DOUBLE_REPLIES = {
-  good: [
-    'Love that. Keep the momentum — next step is queued up.',
-    'You\'re cooking. Hit one more.',
-    'Nice. Future-you is thanking present-you.',
-  ],
-  stuck: [
-    'OK — try the next step for 60 seconds only. Stop after if you want.',
-    'Name the block out loud. Then do the next tiny thing.',
-    'Add an even smaller step before the suggested one.',
-  ],
-  distracted: [
-    'Happens. Phone face-down for 2 minutes. Then one step.',
-    'Refocus: re-read your goal at the top. Pick the next step.',
-    'No guilt. Just one tiny action to get the engine back.',
-  ],
-};
-
-function bodyDoubleReply(status) {
-  const arr = BODY_DOUBLE_REPLIES[status] || BODY_DOUBLE_REPLIES.good;
-  return pickRandom(arr);
+// --- Daily check-in prompts ---
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 5) return 'Late night.';
+  if (h < 12) return 'Good morning.';
+  if (h < 17) return 'Good afternoon.';
+  if (h < 22) return 'Good evening.';
+  return 'Late night.';
 }
 
 const coach = {
   classify,
-  clarifyingQuestions,
-  decompose,
-  expandMilestone,
-  encouragement: () => pickRandom(ENCOURAGEMENTS),
-  nudge: () => pickRandom(NUDGES),
-  timeAudit,
-  questFor,
+  generateInitial,
+  generateAfterAnswer,
+  generateAfterTaskDone,
+  generateAfterTaskSkipped,
+  generateAfterIdeaAccepted,
+  generateNudge,
   triageDump,
   actionableNextStep,
-  bodyDoublePrompt,
-  bodyDoubleReply,
-  detectParalysis,
+  greeting,
+  nid,
 };
 
 export default coach;
