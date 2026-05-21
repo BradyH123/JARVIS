@@ -1,157 +1,260 @@
-// Mock data for the v0 canvas prototype — Hat Business.
+// Hat Business — goal-centered radial canvas.
 //
-// The canvas is nodes + edges. Workflow steps are nodes too, just with
-// a different visual style. The active step is the focal point; the
-// situation web spreads below it.
+// THE METAPHOR:
+//   Goal sits in the center. Around it: 4 foundational "fronts"
+//   (sub-goals). Each front has its own workflow trail of steps
+//   (done → ★ active → upcoming) radiating outward from the goal,
+//   plus the situation assets that front leverages clustered nearby.
+//   Cross-front relationships (e.g. lighting kit addresses photo risk)
+//   draw lines across the canvas, showing how the situation actually
+//   interlocks.
 //
-// Coordinates (x, y) refer to the CENTER of each node, in pixels.
-// The canvas is sized to fit the bounds + padding.
+// COORDS:
+//   x, y refer to the CENTER of each node, in design-pixel units.
+//   Design width = 360 (phone portrait); the canvas scales to viewport.
+//
+// SECTORS (rough quadrants around the goal at (180, 410)):
+//   NE = DESIGN      (you create the product)
+//   NW = CUSTOMERS   (who buys + your network)
+//   SE = PRESENCE    (where you sell — Etsy + IG)
+//   SW = MONEY       (pricing + budget)
 
 export const mockGoal = {
   id: 'g1',
   title: 'Hat Business',
   startedAt: 'May 17',
   lastTouchedRelative: '14h ago',
-  stepsDone: 3,
+  frontsInMotion: 4,
 };
 
-// Canvas dimensions (logical) — the canvas scales to viewport width,
-// these x values are the "design width." On phone (~360px) we render
-// at scale = viewportWidth / DESIGN_W.
 export const DESIGN_W = 360;
 
 export const canvasNodes = [
-  // ── Workflow river (centered vertical column) ────────────
+  // ── CENTER ───────────────────────────────────────────────
   {
     id: 'goal',
     kind: 'goal',
-    label: 'Hat Business',
-    sub: 'Day 4 · 3 done',
+    label: 'HAT BUSINESS',
+    sub: 'Day 4 · 4 fronts in motion',
     x: 180,
-    y: 50,
+    y: 410,
   },
-  { id: 's1', kind: 'step-done', label: 'Pick 3 directions', x: 180, y: 130 },
-  { id: 's2', kind: 'step-done', label: 'Situation updated', x: 180, y: 180 },
-  { id: 's3', kind: 'step-done', label: 'Caption critique', x: 180, y: 230 },
+
+  // ── SUB-GOAL HUBS (foundational steps around the goal) ───
+  { id: 'sg-design', kind: 'subgoal', label: 'DESIGN', x: 250, y: 320 },
+  { id: 'sg-customers', kind: 'subgoal', label: 'CUSTOMERS', x: 110, y: 320 },
+  { id: 'sg-presence', kind: 'subgoal', label: 'PRESENCE', x: 250, y: 500 },
+  { id: 'sg-money', kind: 'subgoal', label: 'MONEY', x: 110, y: 500 },
+
+  // ────────────────────────────────────────────────────────
+  // DESIGN front (NE) — the product itself
+  // ────────────────────────────────────────────────────────
+  // Workflow trail (oldest closer to hub, active and future further out)
+  { id: 'd1', kind: 'step-done', label: 'Pick 3 directions', x: 285, y: 270 },
+  { id: 'd2', kind: 'step-done', label: 'Caption critique', x: 320, y: 220 },
   {
-    id: 's4',
+    id: 'd3',
     kind: 'step-active',
-    label: 'Sketch 3 bucket hat concepts',
-    sub: '~30 min · YOU do this · iPad/paper',
-    x: 180,
-    y: 330,
+    label: 'Sketch 3 bucket hats',
+    sub: '~30 min · YOU',
+    x: 280,
+    y: 140,
   },
-  { id: 's5', kind: 'step-upcoming', label: 'Pick the one to make', x: 180, y: 450 },
-  { id: 's6', kind: 'step-upcoming', label: 'Sew prototype', x: 180, y: 510 },
+  { id: 'd4', kind: 'step-upcoming', label: 'Pick the one', x: 320, y: 65 },
+  { id: 'd5', kind: 'step-upcoming', label: 'Sew prototype', x: 230, y: 35 },
+  // Supporting assets
+  { id: 'drawing', kind: 'skill-strong', label: 'drawing', x: 200, y: 200 },
+  { id: 'ipad', kind: 'tool', label: 'iPad+Procreate', x: 200, y: 245 },
+  { id: 'sewing', kind: 'skill-strong', label: 'sewing', x: 165, y: 80 },
+  { id: 'fabric', kind: 'tool', label: 'fabric stash', x: 165, y: 35 },
 
-  // ── Active-step leverages (close to s4) ──────────────────
-  { id: 'drawing', kind: 'skill-strong', label: 'drawing', x: 60, y: 310 },
-  { id: 'ipad', kind: 'tool', label: 'iPad + Procreate', x: 60, y: 360 },
-  { id: 'timePM', kind: 'time', label: 'time · PM', x: 300, y: 330 },
+  // ────────────────────────────────────────────────────────
+  // CUSTOMERS front (NW) — audience + network
+  // ────────────────────────────────────────────────────────
+  { id: 'c1', kind: 'step-done', label: '8 comp shops', x: 80, y: 270 },
+  { id: 'c2', kind: 'step-done', label: 'Initial audience', x: 45, y: 220 },
+  {
+    id: 'c3',
+    kind: 'step-active',
+    label: 'Coffee w/ Jamie · Thu 3p',
+    sub: 'YOU · Big Sky Cafe',
+    x: 80,
+    y: 140,
+  },
+  { id: 'c4', kind: 'step-upcoming', label: 'Reply to Sam K', x: 45, y: 65 },
+  // Supporting assets
+  { id: 'jamie', kind: 'person', label: 'Jamie', sub: 'etsy expert', x: 155, y: 145 },
+  { id: 'samK', kind: 'person', label: 'Sam K', sub: 'new follower', x: 130, y: 75 },
+  { id: 'audience', kind: 'audience', label: '22-30 arts crowd', x: 165, y: 215 },
+  { id: 'compShops', kind: 'intel', label: 'comp shops intel', x: 28, y: 290 },
 
-  // ── Skills / toolkit cluster (top-left of situation zone) ─
-  { id: 'sewing', kind: 'skill-strong', label: 'sewing', x: 60, y: 620 },
-  { id: 'talking', kind: 'skill-strong', label: 'talking', x: 60, y: 670 },
-  { id: 'igcaptions', kind: 'skill-growing', label: 'IG captions', x: 60, y: 720 },
-  { id: 'pricing', kind: 'skill-weak', label: 'pricing', x: 60, y: 770 },
-  { id: 'photography', kind: 'skill-weak', label: 'photography', x: 60, y: 820 },
-  { id: 'sewingMachine', kind: 'tool', label: 'sewing m/c', x: 140, y: 620 },
-  { id: 'fabric', kind: 'tool', label: 'fabric stash', x: 140, y: 680 },
+  // ────────────────────────────────────────────────────────
+  // PRESENCE front (SE) — where you sell
+  // ────────────────────────────────────────────────────────
+  { id: 'p1', kind: 'step-done', label: 'Setup Etsy', x: 285, y: 555 },
+  { id: 'p2', kind: 'step-done', label: 'Post 3 listings', x: 320, y: 610 },
+  { id: 'p3', kind: 'step-done', label: 'IG launch · 47 likes', x: 325, y: 685 },
+  {
+    id: 'p4',
+    kind: 'step-active',
+    label: 'DM-back to @maple.studio',
+    sub: 'AI drafted · approve to send',
+    x: 285,
+    y: 770,
+  },
+  { id: 'p5', kind: 'step-upcoming', label: 'Reshoot listings', x: 220, y: 845 },
+  // Supporting assets
+  { id: 'etsy', kind: 'tool', label: 'Etsy', x: 215, y: 575 },
+  { id: 'listings', kind: 'thing', label: '3 listings · 8 views', x: 215, y: 645 },
+  { id: 'iglaunch', kind: 'event', label: 'IG launch post', x: 235, y: 720 },
+  { id: 'mapleStudio', kind: 'person', label: '@maple.studio', sub: 'custom inquiry', x: 225, y: 780 },
+  { id: 'photoRisk', kind: 'risk', label: '⚠ photo quality risk', x: 195, y: 830 },
 
-  // ── Network cluster (center-right) ───────────────────────
-  { id: 'you', kind: 'you', label: 'YOU', x: 180, y: 600 },
-  { id: 'jamie', kind: 'person', label: 'Jamie', sub: 'etsy expert', x: 280, y: 590 },
-  { id: 'coffee', kind: 'event', label: 'Coffee · Thu 3pm', x: 300, y: 660 },
-  { id: 'coworkers', kind: 'person-group', label: 'coworkers', x: 230, y: 700 },
-  { id: 'igAudience', kind: 'person-group', label: 'IG · ~400', x: 290, y: 740 },
-  { id: 'samK', kind: 'person', label: 'Sam K', sub: 'new follower', x: 310, y: 800 },
-
-  // ── Outputs / world (bottom-center) ──────────────────────
-  { id: 'etsy', kind: 'tool', label: 'Etsy', x: 180, y: 870 },
-  { id: 'listings', kind: 'thing', label: '3 listings', sub: '8 views · 0 sales', x: 100, y: 920 },
-  { id: 'igLaunch', kind: 'event', label: 'IG launch post', sub: '47 likes · 6 follows', x: 250, y: 920 },
-
-  // ── Intel + risk + pending (bottom-right) ────────────────
-  { id: 'compShops', kind: 'intel', label: '8 comp shops studied', x: 280, y: 1000 },
-  { id: 'audience', kind: 'audience', label: '22-30 arts crowd', sub: 'most promising', x: 130, y: 1000 },
-  { id: 'photoRisk', kind: 'risk', label: '⚠ photo quality risk', x: 200, y: 1060 },
-  { id: 'lightKit', kind: 'pending', label: 'lighting kit · $48', sub: 'pending', x: 100, y: 1130 },
-
-  // ── Finances (bottom-left) ───────────────────────────────
-  { id: 'budget', kind: 'money', label: 'Budget', sub: '$34 / $200 spent', x: 60, y: 1080 },
-  { id: 'priceBand', kind: 'intel', label: 'price $45 – $85', x: 60, y: 1160 },
+  // ────────────────────────────────────────────────────────
+  // MONEY front (SW) — pricing + budget
+  // ────────────────────────────────────────────────────────
+  { id: 'm1', kind: 'step-done', label: '$200 budget set', x: 80, y: 555 },
+  {
+    id: 'm2',
+    kind: 'step-active',
+    label: 'Approve lighting kit · $48',
+    sub: 'YOU decide · reversible',
+    x: 60,
+    y: 660,
+  },
+  { id: 'm3', kind: 'step-upcoming', label: 'Set price band $45-85', x: 90, y: 745 },
+  { id: 'm4', kind: 'step-upcoming', label: 'Track 1st sale margin', x: 135, y: 820 },
+  // Supporting assets
+  { id: 'budget', kind: 'money', label: 'Budget $34/$200', x: 155, y: 580 },
+  { id: 'lightKit', kind: 'pending', label: 'lighting kit $48', sub: 'pending', x: 25, y: 705 },
+  { id: 'priceBand', kind: 'intel', label: '$45-$85 band', x: 160, y: 720 },
 ];
 
 export const canvasEdges = [
-  // ── Workflow river ───────────────────────────────────────
-  { from: 'goal', to: 's1', kind: 'flow' },
-  { from: 's1', to: 's2', kind: 'flow' },
-  { from: 's2', to: 's3', kind: 'flow' },
-  { from: 's3', to: 's4', kind: 'flow' },
-  { from: 's4', to: 's5', kind: 'flow-future' },
-  { from: 's5', to: 's6', kind: 'flow-future' },
+  // ── Goal → sub-goals (foundational radiating arms) ───────
+  { from: 'goal', to: 'sg-design', kind: 'arm' },
+  { from: 'goal', to: 'sg-customers', kind: 'arm' },
+  { from: 'goal', to: 'sg-presence', kind: 'arm' },
+  { from: 'goal', to: 'sg-money', kind: 'arm' },
 
-  // ── Active step leverages ────────────────────────────────
-  { from: 'drawing', to: 's4', kind: 'leverage' },
-  { from: 'ipad', to: 's4', kind: 'leverage' },
-  { from: 'timePM', to: 's4', kind: 'leverage' },
+  // ── DESIGN trail ─────────────────────────────────────────
+  { from: 'sg-design', to: 'd1', kind: 'flow' },
+  { from: 'd1', to: 'd2', kind: 'flow' },
+  { from: 'd2', to: 'd3', kind: 'flow' },
+  { from: 'd3', to: 'd4', kind: 'flow-future' },
+  { from: 'd4', to: 'd5', kind: 'flow-future' },
+  { from: 'drawing', to: 'd3', kind: 'leverage' },
+  { from: 'ipad', to: 'd3', kind: 'leverage' },
+  { from: 'sewing', to: 'd5', kind: 'leverage-future' },
+  { from: 'fabric', to: 'd5', kind: 'leverage-future' },
 
-  // ── Past steps produced things in the world ──────────────
-  { from: 's3', to: 'igLaunch', kind: 'produced' },
-  { from: 's2', to: 'audience', kind: 'produced' },
+  // ── CUSTOMERS trail ──────────────────────────────────────
+  { from: 'sg-customers', to: 'c1', kind: 'flow' },
+  { from: 'c1', to: 'c2', kind: 'flow' },
+  { from: 'c2', to: 'c3', kind: 'flow' },
+  { from: 'c3', to: 'c4', kind: 'flow-future' },
+  { from: 'jamie', to: 'c3', kind: 'leverage' },
+  { from: 'samK', to: 'c4', kind: 'leverage-future' },
+  { from: 'audience', to: 'c2', kind: 'produced' },
+  { from: 'compShops', to: 'c1', kind: 'produced' },
 
-  // ── Skills & tools — anchored on YOU ─────────────────────
-  { from: 'you', to: 'drawing', kind: 'has' },
-  { from: 'you', to: 'sewing', kind: 'has' },
-  { from: 'you', to: 'talking', kind: 'has' },
-  { from: 'you', to: 'igcaptions', kind: 'has' },
-  { from: 'you', to: 'pricing', kind: 'has-weak' },
-  { from: 'you', to: 'photography', kind: 'has-weak' },
-  { from: 'you', to: 'ipad', kind: 'has' },
-  { from: 'you', to: 'sewingMachine', kind: 'has' },
-  { from: 'you', to: 'fabric', kind: 'has' },
-
-  // ── Network ──────────────────────────────────────────────
-  { from: 'you', to: 'jamie', kind: 'knows' },
-  { from: 'jamie', to: 'coffee', kind: 'scheduled' },
-  { from: 'you', to: 'coworkers', kind: 'knows' },
-  { from: 'you', to: 'igAudience', kind: 'reaches' },
-  { from: 'igLaunch', to: 'samK', kind: 'produced' },
-  { from: 'igLaunch', to: 'igAudience', kind: 'reaches' },
-
-  // ── Etsy/listings ────────────────────────────────────────
+  // ── PRESENCE trail ───────────────────────────────────────
+  { from: 'sg-presence', to: 'p1', kind: 'flow' },
+  { from: 'p1', to: 'p2', kind: 'flow' },
+  { from: 'p2', to: 'p3', kind: 'flow' },
+  { from: 'p3', to: 'p4', kind: 'flow' },
+  { from: 'p4', to: 'p5', kind: 'flow-future' },
+  { from: 'etsy', to: 'p1', kind: 'used' },
   { from: 'etsy', to: 'listings', kind: 'hosts' },
-  { from: 'jamie', to: 'etsy', kind: 'expert-in' },
+  { from: 'listings', to: 'p2', kind: 'produced' },
+  { from: 'iglaunch', to: 'p3', kind: 'produced' },
+  { from: 'mapleStudio', to: 'p4', kind: 'leverage' },
 
-  // ── Intel & risk ─────────────────────────────────────────
+  // ── MONEY trail ──────────────────────────────────────────
+  { from: 'sg-money', to: 'm1', kind: 'flow' },
+  { from: 'm1', to: 'm2', kind: 'flow' },
+  { from: 'm2', to: 'm3', kind: 'flow-future' },
+  { from: 'm3', to: 'm4', kind: 'flow-future' },
+  { from: 'budget', to: 'm1', kind: 'produced' },
+  { from: 'lightKit', to: 'm2', kind: 'leverage' },
+  { from: 'priceBand', to: 'm3', kind: 'leverage-future' },
+
+  // ── Cross-front (the situation map weaves it all together) ─
+  { from: 'lightKit', to: 'photoRisk', kind: 'addresses' },
   { from: 'compShops', to: 'photoRisk', kind: 'derives' },
   { from: 'compShops', to: 'priceBand', kind: 'derives' },
   { from: 'compShops', to: 'audience', kind: 'derives' },
-  { from: 'listings', to: 'photoRisk', kind: 'related' },
-  { from: 'lightKit', to: 'photoRisk', kind: 'addresses' },
-  { from: 'lightKit', to: 'budget', kind: 'costs' },
-  { from: 'photography', to: 'photoRisk', kind: 'related' },
+  { from: 'iglaunch', to: 'samK', kind: 'produced' },
+  { from: 'iglaunch', to: 'audience', kind: 'reached' },
+  { from: 'jamie', to: 'p5', kind: 'will-advise' },
+  { from: 'budget', to: 'lightKit', kind: 'gates' },
 ];
 
-// ── Step detail (opens when active step is tapped) ─────────
+// ── Step detail sheets (one per active step) ───────────────
 export const mockStepDetail = {
-  s4: {
+  d3: {
     title: 'Sketch 3 bucket hat concepts',
+    front: 'DESIGN',
     durationMin: 30,
     agency: 'you',
     tool: 'iPad / paper',
     blurb:
       "I'll critique each when you're done, and we'll pick the one to actually make.",
     whyThis: [
-      'You rated illustrated bucket hats as the strongest direction Monday.',
-      "Your drawing skill is the highest-leverage asset for this goal.",
+      'Direction #2 (illustrated bucket hats) is the strongest pick from Monday.',
+      'Drawing is your highest-leverage asset for this goal.',
       'Three sketches gives us enough range to compare without over-committing.',
     ],
-    leverages: ['drawing', 'ipad', 'timePM'],
+    leverages: ['drawing', 'ipad'],
+  },
+  c3: {
+    title: 'Coffee with Jamie · Thursday 3 PM',
+    front: 'CUSTOMERS',
+    durationMin: 45,
+    agency: 'you',
+    tool: 'Big Sky Cafe',
+    blurb:
+      "Bring your phone — Jamie's most useful feedback will be photo critique on the live listings.",
+    whyThis: [
+      "Jamie's an etsy expert and she's direct (good for photo feedback).",
+      'The photo quality risk is your #1 blocker on PRESENCE — Jamie can confirm or rule it out fast.',
+      'In-person talking is one of your strong suits.',
+    ],
+    leverages: ['jamie'],
+  },
+  p4: {
+    title: 'DM-back to @maple.studio',
+    front: 'PRESENCE',
+    durationMin: 2,
+    agency: 'you-approve',
+    tool: 'Instagram',
+    blurb:
+      "They asked about a custom order. AI drafted a reply — approve, edit, or skip.",
+    whyThis: [
+      'First custom inquiry — high signal that the product resonates.',
+      "Quick warm reply keeps them engaged without over-committing.",
+      'Custom orders may be a more viable path than retail listings while photos are weak.',
+    ],
+    leverages: ['mapleStudio'],
+  },
+  m2: {
+    title: 'Approve lighting kit · $48',
+    front: 'MONEY',
+    durationMin: 1,
+    agency: 'you',
+    tool: 'AI orders if approved',
+    blurb:
+      "Addresses the photography risk flag. Reversible (returnable). $48 of your $200 budget.",
+    whyThis: [
+      'Comp shops with similar photo quality have 3× your view-to-favorite rate.',
+      'Listings are live but underperforming — 8 views, 0 favorites in 2 days.',
+      'Returnable, so the downside is bounded.',
+    ],
+    leverages: ['lightKit', 'budget'],
   },
 };
 
-// ── Node detail (drill-down) ───────────────────────────────
+// ── Node detail sheets ─────────────────────────────────────
 export const mockNodeDetail = {
   jamie: {
     title: 'Jamie',
@@ -210,7 +313,7 @@ export const mockNodeDetail = {
           {
             kind: 'bullet',
             text:
-              'Comp shops with similar photo quality have 3x your view-to-favorite rate.',
+              'Comp shops with similar photo quality have 3× your view-to-favorite rate.',
           },
           {
             kind: 'bullet',
@@ -223,14 +326,14 @@ export const mockNodeDetail = {
         heading: 'What addresses this',
         items: [
           { kind: 'note', text: 'Lighting kit · $48 · pending your approval' },
-          { kind: 'note', text: 'Jamie\'s feedback Thursday (she\'s direct)' },
+          { kind: 'note', text: "Jamie's feedback Thursday (she's direct)" },
         ],
       },
     ],
   },
   lightKit: {
-    title: 'Lighting kit · $48 · pending',
-    subtitle: 'AI wants to order this',
+    title: 'Lighting kit · $48',
+    subtitle: 'pending your decision',
     sections: [
       {
         heading: 'Why',
@@ -238,9 +341,10 @@ export const mockNodeDetail = {
           {
             kind: 'bullet',
             text:
-              'Addresses the photography risk flag — comp shops with similar photo quality have 3x your view-to-favorite rate.',
+              'Addresses the photography risk — comp shops with similar photo quality have 3× your view-to-favorite rate.',
           },
           { kind: 'bullet', text: 'Reversible (returnable).' },
+          { kind: 'bullet', text: 'Within budget ($34 spent of $200).' },
         ],
       },
       {
@@ -253,9 +357,92 @@ export const mockNodeDetail = {
       },
     ],
   },
+  mapleStudio: {
+    title: '@maple.studio',
+    subtitle: 'custom order inquiry · IG',
+    sections: [
+      {
+        heading: 'Their message',
+        items: [
+          {
+            when: 'Today 8 AM',
+            actor: 'them',
+            body:
+              "love your work!! do you do custom orders? i'd want something illustrated, kinda art-nouveau vibe — is that in your wheelhouse?",
+          },
+        ],
+      },
+      {
+        heading: 'AI-drafted reply',
+        items: [
+          {
+            when: 'pending',
+            actor: 'you',
+            draftedByAi: true,
+            body:
+              "yes! i do custom — happy to send sketches first. what kind of hat were you imagining? art-nouveau is very much in my wheelhouse.",
+          },
+        ],
+      },
+      {
+        heading: 'Decide',
+        items: [
+          { kind: 'action', label: 'Approve & send' },
+          { kind: 'action', label: 'Edit' },
+          { kind: 'action', label: 'Skip' },
+        ],
+      },
+    ],
+  },
+  audience: {
+    title: '22-30 arts crowd',
+    subtitle: 'most promising audience · from comp shop research',
+    sections: [
+      {
+        heading: 'What we know',
+        items: [
+          { kind: 'bullet', text: 'Comp shops in this niche have 2-4× engagement.' },
+          { kind: 'bullet', text: "IG launch's strongest signal came from this group." },
+          { kind: 'bullet', text: 'Higher tolerance for $45-85 price band.' },
+        ],
+      },
+    ],
+  },
+  compShops: {
+    title: 'Comp shops intel',
+    subtitle: '8 shops studied · Mon-Tue research block',
+    sections: [
+      {
+        heading: 'Key findings',
+        items: [
+          { kind: 'bullet', text: 'Price band: $45-$85 (drawn/illustrated hats).' },
+          { kind: 'bullet', text: 'Photo quality is the #1 differentiator.' },
+          { kind: 'bullet', text: '22-30 arts crowd consistently the top buyer.' },
+          { kind: 'bullet', text: 'Average 30-day time to first sale.' },
+        ],
+      },
+    ],
+  },
+  budget: {
+    title: 'Budget',
+    subtitle: '$34 / $200 spent',
+    sections: [
+      {
+        heading: 'Spent so far',
+        items: [
+          { kind: 'bullet', text: '$25 · 5 yards of organic cotton (Sat)' },
+          { kind: 'bullet', text: '$9 · etsy listing fees (Tue)' },
+        ],
+      },
+      {
+        heading: 'Pending',
+        items: [{ kind: 'note', text: 'Lighting kit · $48 · awaiting approval' }],
+      },
+    ],
+  },
 };
 
-// ── Chat messages (for the drawer) ─────────────────────────
+// ── Chat messages ──────────────────────────────────────────
 export const mockMessages = [
   {
     id: 'm1',
@@ -279,7 +466,7 @@ export const mockMessages = [
     time: '2:32 PM',
     sender: 'ai',
     body:
-      'All three reward drawing. Updated your Situation: "drawing time per piece" → high.',
+      'All three reward drawing. Splitting the goal into 4 fronts so we can move on all of them in parallel: DESIGN, CUSTOMERS, PRESENCE, MONEY.',
   },
   {
     id: 'm4',
@@ -287,14 +474,14 @@ export const mockMessages = [
     time: '9:02 AM',
     sender: 'ai',
     body:
-      "Next move: sketch 3 bucket hat concepts. Tap the active step on the canvas — I'll show you why this and what it touches.",
+      "You have 4 active fronts. Tap any one of the ★ steps on the canvas — I'll show you why this and what it touches.",
   },
 ];
 
 export const mockPending = [
   {
     id: 'p1',
-    section: 'NETWORK',
+    section: 'PRESENCE',
     title: 'DM-back to @maple.studio',
     blurb: 'They asked about a custom order.',
     draft:
@@ -303,14 +490,14 @@ export const mockPending = [
   },
   {
     id: 'p2',
-    section: 'TIME & ENERGY',
+    section: 'DESIGN',
     title: 'Studio block — Sat 10 AM, 3h',
     blurb: "For prototype iteration based on Jamie's feedback.",
     actions: ['Add to calendar', 'Different time', 'Skip'],
   },
   {
     id: 'p3',
-    section: 'FINANCES',
+    section: 'MONEY',
     title: 'Purchase: Lighting kit, $48',
     blurb:
       'Addresses the photography risk flag. Reversible (returnable).',

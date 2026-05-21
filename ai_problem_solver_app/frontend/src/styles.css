@@ -114,10 +114,15 @@ textarea { font-family: inherit; outline: none; }
   opacity: 0.55;
   transition: stroke 0.2s ease, opacity 0.2s ease, stroke-width 0.2s ease;
 }
+.cedge-arm {
+  stroke: #1a1612;
+  stroke-width: 2.2;
+  opacity: 0.85;
+}
 .cedge-flow {
   stroke: #1a1612;
-  stroke-width: 2;
-  opacity: 0.7;
+  stroke-width: 1.6;
+  opacity: 0.65;
 }
 .cedge-flow-future {
   stroke: #c2b69e;
@@ -149,14 +154,26 @@ textarea { font-family: inherit; outline: none; }
   opacity: 0.6;
 }
 .cedge-has, .cedge-has-weak, .cedge-knows, .cedge-reaches, .cedge-hosts,
-.cedge-scheduled, .cedge-expert-in, .cedge-related, .cedge-costs {
+.cedge-scheduled, .cedge-expert-in, .cedge-related, .cedge-costs,
+.cedge-used, .cedge-reached, .cedge-gates, .cedge-will-advise {
   stroke: #d9d0c0;
   stroke-width: 1;
   opacity: 0.45;
 }
-.cedge-has-weak {
+.cedge-has-weak, .cedge-will-advise {
   stroke-dasharray: 1 3;
-  opacity: 0.3;
+  opacity: 0.35;
+}
+.cedge-leverage-future {
+  stroke: #c46a4a;
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.5;
+}
+.cedge-gates {
+  stroke: #5a8e6a;
+  stroke-dasharray: 4 3;
+  opacity: 0.5;
 }
 .cedge-hi {
   opacity: 1 !important;
@@ -204,17 +221,49 @@ textarea { font-family: inherit; outline: none; }
   background: #1a1612;
   color: #faf7f2;
   border: none;
-  padding: 10px 18px;
-  border-radius: 14px;
+  padding: 14px 20px;
+  border-radius: 50%;
+  width: 130px;
+  height: 130px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   font-family: ui-serif, Georgia, Cambria, serif;
-  max-width: 220px;
+  max-width: none;
+  white-space: normal;
+  text-align: center;
+  box-shadow:
+    0 0 0 6px rgba(26, 22, 18, 0.05),
+    0 0 0 14px rgba(26, 22, 18, 0.03),
+    0 6px 22px rgba(26, 22, 18, 0.18);
 }
 .cnode-goal .cnode-label {
   font-family: ui-serif, Georgia, Cambria, serif;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
 }
-.cnode-goal .cnode-sub { color: #c2b69e; font-size: 10px; }
+.cnode-goal .cnode-sub {
+  color: #c2b69e;
+  font-size: 9.5px;
+  margin-top: 6px;
+  letter-spacing: 0.04em;
+}
+
+.cnode-subgoal {
+  background: transparent;
+  border: 1px solid #c2b69e;
+  color: #5a4e3e;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  padding: 4px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
 
 .cnode-step-done {
   background: #f0ebe0;

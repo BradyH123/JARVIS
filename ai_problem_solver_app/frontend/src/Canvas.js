@@ -201,8 +201,17 @@ export default function Canvas({ onOpenChat }) {
   const containerRef = useRef(null);
   const nodeRefs = useRef({});
   const [positions, setPositions] = useState({});
-  const [activeId, setActiveId] = useState('s4'); // default highlight on the next step
+  const [activeId, setActiveId] = useState(null); // no default highlight; user explores
   const [sheetId, setSheetId] = useState(null);
+
+  // On mount, center the goal in the viewport so the radial layout reads right.
+  useEffect(() => {
+    const scrollEl = containerRef.current?.parentElement;
+    const goalEl = nodeRefs.current['goal'];
+    if (!scrollEl || !goalEl) return;
+    const goalY = goalEl.offsetTop + goalEl.offsetHeight / 2;
+    scrollEl.scrollTop = Math.max(0, goalY - scrollEl.clientHeight / 2);
+  }, []);
 
   // Measure node positions after render.
   useLayoutEffect(() => {

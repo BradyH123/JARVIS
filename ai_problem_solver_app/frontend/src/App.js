@@ -14,7 +14,7 @@ export default function App() {
         <div className="header-left">
           <div className="header-title">{mockGoal.title}</div>
           <div className="header-meta">
-            Day 4 · {mockGoal.lastTouchedRelative} · {mockGoal.stepsDone} done
+            Day 4 · {mockGoal.lastTouchedRelative} · {mockGoal.frontsInMotion} fronts
           </div>
         </div>
         <div className="header-actions">
