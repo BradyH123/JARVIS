@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/peer-tutoring-front-end/static/css/main.d09fddef.css",
+    "main.js": "/peer-tutoring-front-end/static/js/main.316f71a4.js",
+    "index.html": "/peer-tutoring-front-end/index.html",
+    "main.d09fddef.css.map": "/peer-tutoring-front-end/static/css/main.d09fddef.css.map",
+    "main.316f71a4.js.map": "/peer-tutoring-front-end/static/js/main.316f71a4.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.d09fddef.css",
+    "static/js/main.316f71a4.js"
+  ]
+}
