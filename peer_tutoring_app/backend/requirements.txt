@@ -1,4 +1,8 @@
-Flask
-Flask-SQLAlchemy
-gunicorn
-flask-cors
+Flask>=3.0
+flask-cors>=4.0
+gunicorn>=21.2
+requests>=2.31
+python-dotenv>=1.0
+# Apple Music developer tokens are signed JWTs (ES256) using your .p8 key
+PyJWT>=2.8
+cryptography>=42.0

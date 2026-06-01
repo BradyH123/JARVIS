@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.db
+instance/
+
+# Secrets
+.env
+*.p8
+
+# Node / React
+node_modules/
+build/
+.DS_Store
+npm-debug.log*

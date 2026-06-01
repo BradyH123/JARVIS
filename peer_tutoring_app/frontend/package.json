@@ -1,9 +1,9 @@
 {
-  "name": "peer-tutoring-frontend",
+  "name": "playlist-porter-frontend",
   "version": "1.0.0",
+  "description": "Transfer playlists between Spotify, Apple Music and SoundCloud.",
   "main": "src/index.js",
   "dependencies": {
-    "axios": "^0.21.1",
     "react": "^17.0.1",
     "react-dom": "^17.0.1",
     "react-scripts": "^4.0.3"
@@ -13,5 +13,9 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
+  },
+  "browserslist": {
+    "production": [">0.2%", "not dead", "not op_mini all"],
+    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
   }
 }
