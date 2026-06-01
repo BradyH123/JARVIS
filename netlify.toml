@@ -1,0 +1,33 @@
+# Netlify build config. The app lives in a subdirectory, so we point Netlify at
+# it with `base`. react-scripts@4 predates an OpenSSL change, so we pin Node and
+# pass the legacy-provider flag — without this the build fails with
+# ERR_OSSL_EVP_UNSUPPORTED.
+[build]
+  base = "peer_tutoring_app/frontend"
+  command = "npm run build"
+  publish = "build"          # relative to `base` -> peer_tutoring_app/frontend/build
+
+[build.environment]
+  NODE_VERSION = "18"
+  NODE_OPTIONS = "--openssl-legacy-provider"
+  # Where the deployed React app should send API calls. Leave blank to use the
+  # same-origin /api proxy below; or set to your backend URL in the Netlify UI.
+  REACT_APP_API_URL = ""
+
+# --- Connecting the frontend to your Flask backend -------------------------
+# Recommended: proxy /api/* to your deployed backend so requests stay
+# same-origin (first-party session cookies "just work"). After you deploy the
+# backend (see DEPLOY.md), uncomment this and set the real URL:
+#
+# [[redirects]]
+#   from = "/api/*"
+#   to = "https://your-backend.onrender.com/api/:splat"
+#   status = 200
+#   force = true
+
+# Single-page-app fallback: every other path serves index.html so client-side
+# routing / deep links work.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

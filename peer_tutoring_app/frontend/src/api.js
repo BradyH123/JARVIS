@@ -1,7 +1,9 @@
 // Thin wrapper around the backend API. Every call sends the session cookie
 // (credentials: 'include') so the server can find this browser's stored tokens.
 
-const BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+// Empty string => same-origin (use the Netlify /api proxy). Unset => local dev.
+const BASE =
+  process.env.REACT_APP_API_URL ?? 'http://localhost:5000';
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}/api${path}`, {

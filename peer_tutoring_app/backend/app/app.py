@@ -30,8 +30,12 @@ from .transfer import transfer_playlist
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
-# Cross-site cookie so the React dev server (port 3000) keeps its session.
-app.config.update(SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True)
+# Session cookie policy (see config.py — cross-domain prod needs None + Secure).
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE=config.SESSION_COOKIE_SAMESITE,
+    SESSION_COOKIE_SECURE=config.SESSION_COOKIE_SECURE,
+)
 CORS(app, supports_credentials=True, origins=[config.FRONTEND_URL])
 
 

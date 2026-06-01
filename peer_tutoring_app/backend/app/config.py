@@ -25,6 +25,13 @@ BACKEND_URL = _get("BACKEND_URL", "http://localhost:5000")
 # Signs the Flask session cookie. Override in production.
 SECRET_KEY = _get("SECRET_KEY", "dev-only-change-me")
 
+# Session cookie policy. For local dev the defaults (Lax / not-Secure) are fine.
+# When the frontend and backend are on *different* domains in production, the
+# browser only sends the cookie cross-site if it is SameSite=None AND Secure, so
+# set SESSION_COOKIE_SAMESITE=None and SESSION_COOKIE_SECURE=true there.
+SESSION_COOKIE_SAMESITE = _get("SESSION_COOKIE_SAMESITE", "Lax")
+SESSION_COOKIE_SECURE = _get("SESSION_COOKIE_SECURE", "false").lower() in ("1", "true", "yes")
+
 
 class SpotifyConfig:
     CLIENT_ID = _get("SPOTIFY_CLIENT_ID")
