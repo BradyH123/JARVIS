@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screen Assistant</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <h1>Screen Assistant</h1>
+      </div>
+      <div class="status" id="config-status">checking…</div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="record">Teach</button>
+      <button class="tab" data-tab="skills">Skills</button>
+      <button class="tab" data-tab="assistant">Assistant</button>
+    </nav>
+
+    <main>
+      <!-- TEACH -->
+      <section class="panel active" id="tab-record">
+        <div class="card">
+          <h2>Teach a new skill by demonstration</h2>
+          <p class="muted">
+            Press <kbd>Start</kbd> (or <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>),
+            perform the action on your screen, then <kbd>Stop</kbd>. The assistant captures
+            frames as you work and generalizes them into a reusable skill.
+          </p>
+
+          <div class="record-controls">
+            <button id="btn-record" class="primary">● Start recording</button>
+            <span id="record-meta" class="muted">idle</span>
+          </div>
+
+          <div id="frames-strip" class="frames-strip"></div>
+
+          <div id="name-block" class="name-block hidden">
+            <label>
+              Name this action
+              <input id="skill-name" type="text" placeholder="e.g. File my weekly status report" />
+            </label>
+            <label>
+              Note (optional) — anything the AI can't see
+              <textarea id="skill-note" rows="2" placeholder="e.g. Always CC my manager; the template lives in Drive."></textarea>
+            </label>
+            <button id="btn-save" class="primary">Save skill</button>
+            <span id="save-status" class="muted"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- SKILLS -->
+      <section class="panel" id="tab-skills">
+        <div class="card">
+          <h2>Skill library</h2>
+          <p class="muted">Everything the assistant has learned. Click a skill to expand.</p>
+          <div id="skills-list" class="skills-list"></div>
+        </div>
+      </section>
+
+      <!-- ASSISTANT -->
+      <section class="panel" id="tab-assistant">
+        <div class="card chat-card">
+          <h2>Talk to your assistant</h2>
+          <p class="muted">
+            Ask for a skill by name or describe what you want. The assistant proposes a plan;
+            <strong>nothing runs on your machine without your approval.</strong>
+          </p>
+          <div id="chat-log" class="chat-log"></div>
+          <div class="chat-input">
+            <input id="chat-text" type="text" placeholder="e.g. File my weekly report" />
+            <button id="btn-send" class="primary">Send</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- PLAN APPROVAL MODAL -->
+    <div id="plan-modal" class="modal hidden">
+      <div class="modal-body">
+        <h3 id="plan-title">Proposed plan</h3>
+        <div id="plan-content"></div>
+        <div class="modal-actions">
+          <button id="plan-cancel" class="ghost">Cancel</button>
+          <button id="plan-approve" class="primary">Approve &amp; run (simulated)</button>
+        </div>
+        <p class="muted tiny">
+          Execution is simulated in this MVP — approving logs the plan rather than driving your
+          mouse. See DESIGN.md for the real-execution phase.
+        </p>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

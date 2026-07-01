@@ -1,0 +1,202 @@
+'use strict';
+
+/**
+ * Thin wrapper around the Anthropic SDK for the three things this app asks of
+ * Claude:
+ *
+ *   1. understandDemonstration() — look at the frames of a recorded action plus
+ *      the user's note, and generalize it into a reusable, named skill.
+ *   2. chat() — answer the user conversationally, aware of the whole skill
+ *      library, and decide whether a stored skill should be run.
+ *   3. planExecution() — given a chosen skill and the CURRENT screen, produce a
+ *      concrete, step-by-step plan the user must approve before anything runs.
+ *
+ * Everything returns plain objects. The renderer never talks to Anthropic
+ * directly — only the Electron main process does, so the API key stays out of
+ * the browser context.
+ */
+
+const Anthropic = require('@anthropic-ai/sdk');
+
+const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+
+function getClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      'ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add your key.'
+    );
+  }
+  return new Anthropic({ apiKey });
+}
+
+/** Convert a "data:image/png;base64,...." URL into an SDK image block. */
+function frameToImageBlock(dataUrl) {
+  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/.exec(dataUrl || '');
+  if (!match) return null;
+  return {
+    type: 'image',
+    source: { type: 'base64', media_type: match[1], data: match[2] },
+  };
+}
+
+/** Best-effort extraction of a JSON object from a model text response. */
+function extractJson(text) {
+  if (!text) return null;
+  // Prefer a fenced ```json block, else the first {...} span.
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
+  const candidate = fenced ? fenced[1] : text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+}
+
+function textOf(message) {
+  return (message.content || [])
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n')
+    .trim();
+}
+
+/**
+ * Turn a demonstration into a structured skill.
+ * @param {string[]} frames  data-URL screenshots captured during the demo (in order)
+ * @param {object}   opts    { name, note }
+ */
+async function understandDemonstration(frames, opts = {}) {
+  const client = getClient();
+  const images = (frames || []).map(frameToImageBlock).filter(Boolean).slice(0, 12);
+
+  const instructions =
+    'You are the learning core of a screen-watching desktop assistant. The user just ' +
+    'performed an action on their computer and captured the frames below (in order). ' +
+    'They named it: "' +
+    (opts.name || 'untitled action') +
+    '". Their note: "' +
+    (opts.note || '(none)') +
+    '".\n\n' +
+    'Study the frames and GENERALIZE the action into a reusable skill — not a pixel-by-pixel ' +
+    'replay, but the underlying technique, so it can be re-applied later even if the screen ' +
+    'differs slightly.\n\n' +
+    'Respond with ONLY a JSON object of this shape:\n' +
+    '{\n' +
+    '  "description": "one or two sentences: what this accomplishes and how",\n' +
+    '  "app_context": "the app or site where this happens, or \\"unknown\\"",\n' +
+    '  "steps": ["ordered, human-readable steps of the technique"],\n' +
+    '  "trigger_phrases": ["natural ways the user might later ask for this"]\n' +
+    '}';
+
+  const content = [{ type: 'text', text: instructions }, ...images];
+  if (images.length === 0) {
+    content.push({
+      type: 'text',
+      text: '\n(No frames were captured — infer a reasonable skill from the name and note alone.)',
+    });
+  }
+
+  const message = await client.messages.create({
+    model: DEFAULT_MODEL,
+    max_tokens: 1024,
+    messages: [{ role: 'user', content }],
+  });
+
+  const parsed = extractJson(textOf(message)) || {};
+  return {
+    description: parsed.description || opts.note || 'A user-taught action.',
+    app_context: parsed.app_context || 'unknown',
+    steps: Array.isArray(parsed.steps) ? parsed.steps : [],
+    trigger_phrases: Array.isArray(parsed.trigger_phrases) ? parsed.trigger_phrases : [],
+  };
+}
+
+/**
+ * Conversational turn. The assistant knows the whole skill library and may
+ * suggest running one.
+ * @param {Array}  history        [{ role: 'user'|'assistant', text }]
+ * @param {string} skillsContext  output of SkillStore.contextForPrompt()
+ */
+async function chat(history, skillsContext) {
+  const client = getClient();
+
+  const system =
+    'You are a personal desktop assistant that has learned skills by watching the user ' +
+    'work. You are helpful, concise, and safety-conscious: you never claim to have taken ' +
+    'an action on the computer — a separate, human-approved execution step does that.\n\n' +
+    'Here is the user\'s current skill library:\n\n' +
+    skillsContext +
+    '\n\nWhen the user asks for something that matches a skill, say which skill applies ' +
+    '(by name) and offer to run it. End such replies with a line of the exact form:\n' +
+    'RUN_SKILL: <skill id>\n' +
+    'Only include that line when you are proposing to execute a specific stored skill.';
+
+  const messages = (history || []).map((m) => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: m.text,
+  }));
+
+  const message = await client.messages.create({
+    model: DEFAULT_MODEL,
+    max_tokens: 1024,
+    system,
+    messages,
+  });
+
+  const reply = textOf(message);
+  const runMatch = /RUN_SKILL:\s*([^\s]+)/.exec(reply);
+  return {
+    reply: reply.replace(/RUN_SKILL:\s*[^\s]+\s*$/, '').trim(),
+    proposed_skill_id: runMatch ? runMatch[1] : null,
+  };
+}
+
+/**
+ * Produce a concrete execution plan for a skill against the current screen.
+ * This does NOT execute anything — it returns a plan for the user to approve.
+ * @param {object} skill        full skill record (with steps)
+ * @param {string} screenshot   data-URL of the current screen (optional)
+ */
+async function planExecution(skill, screenshot) {
+  const client = getClient();
+  const image = frameToImageBlock(screenshot);
+
+  const instructions =
+    'You are the planning core of a desktop assistant. Produce a concrete, ordered plan ' +
+    'to perform the following learned skill on the user\'s computer RIGHT NOW. A human will ' +
+    'review this plan before anything runs, so be explicit and flag anything risky ' +
+    '(sending messages, deleting, spending money, irreversible changes).\n\n' +
+    'Skill: ' + skill.name + '\n' +
+    'Description: ' + (skill.description || '') + '\n' +
+    'Known steps:\n' + (skill.steps || []).map((s, i) => `  ${i + 1}. ${s}`).join('\n') +
+    '\n\nRespond with ONLY JSON:\n' +
+    '{\n' +
+    '  "plan": ["concrete actions to take now, in order"],\n' +
+    '  "risk_level": "low" | "medium" | "high",\n' +
+    '  "risks": ["anything the user should know before approving"],\n' +
+    '  "needs_clarification": ["questions if the current screen is not where this can start"]\n' +
+    '}';
+
+  const content = [{ type: 'text', text: instructions }];
+  if (image) {
+    content.push({ type: 'text', text: '\nThe current screen:' });
+    content.push(image);
+  }
+
+  const message = await client.messages.create({
+    model: DEFAULT_MODEL,
+    max_tokens: 1024,
+    messages: [{ role: 'user', content }],
+  });
+
+  const parsed = extractJson(textOf(message)) || {};
+  return {
+    plan: Array.isArray(parsed.plan) ? parsed.plan : [],
+    risk_level: parsed.risk_level || 'medium',
+    risks: Array.isArray(parsed.risks) ? parsed.risks : [],
+    needs_clarification: Array.isArray(parsed.needs_clarification) ? parsed.needs_clarification : [],
+  };
+}
+
+module.exports = { understandDemonstration, chat, planExecution, DEFAULT_MODEL };

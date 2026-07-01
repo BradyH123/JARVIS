@@ -1,0 +1,19 @@
+{
+  "name": "screen-assistant",
+  "version": "0.1.0",
+  "description": "An AI desktop assistant that watches your screen, learns actions by demonstration, remembers them as named skills, and recalls them conversationally.",
+  "main": "main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "electron": "^31.3.0"
+  }
+}
