@@ -5,10 +5,15 @@ demonstration, remembers them as named skills, and recalls them
 conversationally** — with a human-approval gate before anything runs on your
 machine.
 
-This is an MVP scaffold. It is real and runnable, but execution is *simulated*
-(the assistant proposes a plan you approve; it does not yet drive your mouse).
-See [`DESIGN.md`](./DESIGN.md) for the full architecture and the phased roadmap
-to real, gated autonomy.
+The assistant can **actually take control of your mouse and keyboard** and work
+autonomously toward a goal, using Claude's computer-use in a perceive → decide →
+act loop. Every run starts behind an **approval gate** and can be stopped
+instantly. See [`DESIGN.md`](./DESIGN.md) for the full architecture and roadmap.
+
+> ⚠️ **This software controls your real computer.** It can click, type, and open
+> things on its own. Start with low-stakes tasks, keep the STOP control in reach
+> (**Ctrl/Cmd+Shift+X** works even when the app isn't focused), and don't leave
+> it unattended on anything destructive or irreversible.
 
 ## What works today
 
@@ -18,6 +23,9 @@ to real, gated autonomy.
 - **Skill library**: browse, expand, and delete everything the assistant learned.
 - **Assistant chat**: ask for a skill by name or describe a goal; the assistant
   finds the matching skill and proposes an execution **plan you must approve**.
+- **Autonomous execution**: after you approve, the assistant drives the real
+  mouse/keyboard to accomplish the goal, screenshotting to verify each step, with
+  a live action log and a STOP button. Guarded by a step cap and the kill switch.
 
 ## Requirements
 
@@ -33,11 +41,24 @@ cp .env.example .env      # then paste your ANTHROPIC_API_KEY into .env
 npm start
 ```
 
-On first launch macOS/Windows will ask for **Screen Recording** permission —
-that's the app's perception pillar; grant it so capture works.
+On first launch you'll need to grant OS permissions:
 
-Global shortcut: **Ctrl/Cmd + Shift + R** toggles the demonstration recorder
-from anywhere.
+- **Screen Recording** (perception) — macOS/Windows will prompt.
+- **Accessibility / input control** (the "hands") — nut.js needs this to move the
+  mouse and type:
+  - **macOS:** System Settings → Privacy & Security → **Accessibility** → enable
+    the app (and Screen Recording).
+  - **Linux:** requires an **X11** session (nut.js does not support Wayland) and
+    `libxtst`/`libpng` present.
+  - **Windows:** works out of the box.
+
+If the top bar shows `⚠ no OS control`, the native input module didn't load —
+re-run `npm install` and check the permissions above.
+
+Global shortcuts (work from anywhere):
+
+- **Ctrl/Cmd + Shift + R** — toggle the demonstration recorder.
+- **Ctrl/Cmd + Shift + X** — **emergency STOP** the autonomous run.
 
 ## Configuration
 
@@ -47,6 +68,16 @@ from anywhere.
 |-----|---------|---------|
 | `ANTHROPIC_API_KEY` | your Claude API key | — (required) |
 | `ANTHROPIC_MODEL` | model for vision + reasoning | `claude-sonnet-5` |
+| `SA_COMPUTER_USE_MODEL` | model for the autonomous loop (needs computer-use support) | falls back to `ANTHROPIC_MODEL` |
+| `SA_COMPUTER_TOOL_TYPE` | computer tool version | `computer_20250124` |
+| `SA_COMPUTER_BETA` | computer-use beta flag | `computer-use-2025-01-24` |
+| `SA_MAX_STEPS` | hard cap on autonomous steps per run | `40` |
+| `SA_ACTION_DELAY_MS` | settle delay after each action | `350` |
+| `SA_TARGET_WIDTH` | width Claude "sees"; coords scaled to real px | `1280` |
+
+> **Computer-use requires a model that supports it.** Point
+> `SA_COMPUTER_USE_MODEL`/`SA_COMPUTER_TOOL_TYPE`/`SA_COMPUTER_BETA` at a
+> supported model + tool version for your account if the defaults aren't enabled.
 
 ## Project layout
 
@@ -56,19 +87,27 @@ screen-assistant/
 ├── preload.js         safe bridge to the UI
 ├── lib/
 │   ├── skills.js      skill memory store (skills.json)
-│   └── claude.js      Anthropic calls: learn / chat / plan
-└── renderer/          three-tab UI (Teach / Skills / Assistant)
+│   ├── claude.js      Anthropic calls: learn / chat / plan
+│   ├── executor.js    OS input layer (nut.js) — the "hands"
+│   └── agent.js       computer-use agentic loop — the "brain"
+└── renderer/          three-tab UI (Teach / Skills / Assistant) + run overlay
 ```
 
 ## Safety
 
 - The web UI is sandboxed (`contextIsolation`, no `nodeIntegration`); it cannot
   reach Node, the filesystem, or your API key.
-- Nothing executes without an explicit approval click — and in this MVP even an
-  approved plan is only simulated.
-- Screen data stays local; frames go to Anthropic only when you record a demo or
-  ask for a plan.
+- **No autonomous run starts without an explicit approval click.**
+- Once running, you can stop instantly: the **STOP** button or the global
+  **Ctrl/Cmd+Shift+X** kill switch, checked before every step.
+- A **step cap** (`SA_MAX_STEPS`) bounds any single run.
+- Screen data stays local; frames go to Anthropic only when you record a demo,
+  ask for a plan, or during an approved run.
+- The model is instructed to avoid destructive/irreversible/outbound actions
+  unless the goal clearly requires them — but **this is guidance, not a
+  guarantee**. Supervise real runs.
 
 ## Status
 
-MVP / Phase 0. Real gated execution is Phase 1 — see [`DESIGN.md`](./DESIGN.md).
+Phase 1 — real, gated autonomous execution. Continuous private perception and
+skill-chaining are Phases 2–3 — see [`DESIGN.md`](./DESIGN.md).

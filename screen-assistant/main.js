@@ -28,9 +28,13 @@ const {
 
 const { SkillStore } = require('./lib/skills');
 const claude = require('./lib/claude');
+const agent = require('./lib/agent');
+const executor = require('./lib/executor');
 
 let mainWindow = null;
 let store = null;
+let sessionAbort = false; // kill switch for the autonomous loop
+let sessionRunning = false;
 
 function nowIso() {
   return new Date().toISOString();
@@ -63,7 +67,7 @@ function createWindow() {
  * data URL. Thumbnail size is capped so frames stay small enough to store and
  * to send to the model.
  */
-async function captureFrame() {
+async function captureSized() {
   const primary = screen.getPrimaryDisplay();
   const { width, height } = primary.size;
   const scale = Math.min(1, 1280 / width);
@@ -80,7 +84,12 @@ async function captureFrame() {
   // Primary display first if we can identify it, else the first source.
   const source =
     sources.find((s) => String(s.display_id) === String(primary.id)) || sources[0];
-  return source.thumbnail.toDataURL();
+  const size = source.thumbnail.getSize();
+  return { dataUrl: source.thumbnail.toDataURL(), width: size.width, height: size.height };
+}
+
+async function captureFrame() {
+  return (await captureSized()).dataUrl;
 }
 
 function registerIpc() {
@@ -127,9 +136,62 @@ function registerIpc() {
     return { skill: { id: skill.id, name: skill.name }, ...plan };
   });
 
+  // Autonomously execute a goal (optionally guided by a learned skill) by
+  // driving the real mouse/keyboard. Progress streams to the renderer over the
+  // 'agent:event' channel. Requires the native input module + user approval.
+  ipcMain.handle('assistant:execute', async (e, payload) => {
+    const { skillId, goal } = payload || {};
+    if (sessionRunning) return { status: 'busy' };
+    if (!executor.isAvailable()) {
+      return {
+        status: 'error',
+        message:
+          'Native input module not available. Run "npm install" so @nut-tree-fork/nut-js ' +
+          'builds, and grant OS accessibility permission. See README.',
+      };
+    }
+
+    const skill = skillId ? store.get(skillId) : null;
+    const objective = goal || (skill ? skill.name : null);
+    if (!objective) return { status: 'error', message: 'No goal or skill provided.' };
+
+    const send = (evt) => {
+      if (!e.sender.isDestroyed()) e.sender.send('agent:event', evt);
+    };
+
+    sessionAbort = false;
+    sessionRunning = true;
+    send({ type: 'started', goal: objective });
+    try {
+      const result = await agent.runSession({
+        goal: objective,
+        skill,
+        capture: captureSized,
+        execute: executor.perform,
+        onEvent: send,
+        shouldAbort: () => sessionAbort,
+      });
+      send({ type: 'finished', ...result });
+      return result;
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    } finally {
+      sessionRunning = false;
+    }
+  });
+
+  ipcMain.handle('assistant:stop', async () => {
+    sessionAbort = true;
+    return { stopped: true };
+  });
+
   ipcMain.handle('config:info', async () => ({
     model: claude.DEFAULT_MODEL,
+    computerUseModel: agent.MODEL,
+    maxSteps: agent.MAX_STEPS,
     hasKey: Boolean(process.env.ANTHROPIC_API_KEY),
+    canControl: executor.isAvailable(),
   }));
 }
 
@@ -143,6 +205,15 @@ function registerShortcuts() {
     }
   });
   if (!ok) console.warn('Could not register global shortcut Ctrl/Cmd+Shift+R');
+
+  // Emergency stop for the autonomous loop — works even when the app isn't focused.
+  const stopOk = globalShortcut.register('CommandOrControl+Shift+X', () => {
+    sessionAbort = true;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('agent:event', { type: 'abort-requested' });
+    }
+  });
+  if (!stopOk) console.warn('Could not register emergency-stop shortcut Ctrl/Cmd+Shift+X');
 }
 
 app.whenReady().then(() => {

@@ -20,10 +20,14 @@ document.querySelectorAll('.tab').forEach((tab) => {
   try {
     const info = await api.configInfo();
     const el = document.getElementById('config-status');
-    el.textContent = info.hasKey
-      ? `model: ${info.model}`
-      : '⚠ no ANTHROPIC_API_KEY — set it in .env';
-    el.style.color = info.hasKey ? '' : 'var(--danger)';
+    if (!info.hasKey) {
+      el.textContent = '⚠ no ANTHROPIC_API_KEY — set it in .env';
+      el.style.color = 'var(--danger)';
+    } else {
+      const control = info.canControl ? '🖱 control ready' : '⚠ no OS control (see README)';
+      el.textContent = `model: ${info.model} · ${control}`;
+      el.style.color = info.canControl ? '' : '#ffcc66';
+    }
   } catch (e) {
     /* ignore */
   }
@@ -203,6 +207,7 @@ const planContent = document.getElementById('plan-content');
 const planTitle = document.getElementById('plan-title');
 
 async function proposePlan(skillId) {
+  currentPlanSkillId = skillId;
   modal.classList.remove('hidden');
   planTitle.textContent = 'Building plan…';
   planContent.innerHTML = '<p class="muted">Looking at your current screen…</p>';
@@ -222,12 +227,89 @@ async function proposePlan(skillId) {
   }
 }
 
+let currentPlanSkillId = null;
+
 document.getElementById('plan-cancel').addEventListener('click', () => modal.classList.add('hidden'));
 document.getElementById('plan-approve').addEventListener('click', () => {
-  // MVP: execution is simulated. A later phase drives the OS here.
-  console.log('[simulated execution] plan approved by user');
   modal.classList.add('hidden');
-  addMessage('assistant', '✓ Plan approved. (Execution is simulated in this MVP — see DESIGN.md.)');
+  if (currentPlanSkillId) startRun({ skillId: currentPlanSkillId });
+});
+
+/* ---------- live autonomous run ---------- */
+const runOverlay = document.getElementById('run-overlay');
+const runLog = document.getElementById('run-log');
+const runStatus = document.getElementById('run-status');
+const runGoal = document.getElementById('run-goal');
+
+function logRun(kind, text) {
+  const line = document.createElement('div');
+  line.className = 'run-line ' + kind;
+  line.textContent = text;
+  runLog.appendChild(line);
+  runLog.scrollTop = runLog.scrollHeight;
+}
+
+async function startRun(payload) {
+  runOverlay.classList.remove('hidden');
+  runLog.innerHTML = '';
+  runStatus.textContent = '● running';
+  runStatus.className = 'run-status running';
+  runGoal.textContent = payload.goal || '';
+  logRun('info', 'Starting… the assistant now controls your mouse & keyboard.');
+  try {
+    const res = await api.execute(payload);
+    if (res && res.status === 'busy') logRun('warn', 'A run is already in progress.');
+    if (res && res.status === 'error') logRun('error', res.message || 'Error');
+  } catch (e) {
+    logRun('error', e.message);
+  }
+}
+
+document.getElementById('run-stop').addEventListener('click', async () => {
+  logRun('warn', 'Stop requested…');
+  await api.stop();
+});
+
+api.onAgentEvent((evt) => {
+  switch (evt.type) {
+    case 'started':
+      runGoal.textContent = evt.goal || '';
+      break;
+    case 'thinking':
+      logRun('think', '🧠 ' + evt.text);
+      break;
+    case 'action':
+      logRun('action', '➤ ' + (evt.detail || evt.action));
+      break;
+    case 'abort-requested':
+      logRun('warn', 'Emergency stop received.');
+      break;
+    case 'aborted':
+      runStatus.textContent = '■ stopped';
+      runStatus.className = 'run-status stopped';
+      logRun('warn', 'Run stopped.');
+      break;
+    case 'max_steps':
+      runStatus.textContent = '■ step limit';
+      runStatus.className = 'run-status stopped';
+      logRun('warn', `Hit the ${evt.steps}-step safety limit.`);
+      break;
+    case 'error':
+      runStatus.textContent = '■ error';
+      runStatus.className = 'run-status stopped';
+      logRun('error', evt.message || 'Error');
+      break;
+    case 'done':
+    case 'finished':
+      if (evt.type === 'done' || (evt.status && evt.status === 'done')) {
+        runStatus.textContent = '✓ done';
+        runStatus.className = 'run-status done';
+        if (evt.message) logRun('info', '✓ ' + evt.message);
+      }
+      break;
+    default:
+      break;
+  }
 });
 
 /* ---------- util ---------- */

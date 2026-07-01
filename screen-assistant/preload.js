@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('assistant', {
   plan: (skillId) => ipcRenderer.invoke('assistant:plan', skillId),
   configInfo: () => ipcRenderer.invoke('config:info'),
 
+  // Autonomous execution — actually drives the machine.
+  execute: (payload) => ipcRenderer.invoke('assistant:execute', payload),
+  stop: () => ipcRenderer.invoke('assistant:stop'),
+  onAgentEvent: (cb) => ipcRenderer.on('agent:event', (_e, evt) => cb(evt)),
+
   // Global-shortcut push from main → renderer.
   onToggleRecord: (cb) => ipcRenderer.on('shortcut:toggle-record', cb),
 });

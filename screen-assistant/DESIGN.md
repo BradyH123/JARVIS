@@ -16,11 +16,14 @@ about what is buildable today versus what is a research frontier.
 | 1 | **Perception** | Capture what's on screen (and optionally input events) | ✅ MVP: on-demand frame capture during a recording window |
 | 2 | **Demonstration learning** | User performs an action, names it; the AI generalizes it into a reusable *skill* | ✅ MVP: frames + note → Claude → structured skill |
 | 3 | **Memory** | A growing library of named skills the user can browse and recall | ✅ MVP: JSON store + library UI |
-| 4 | **Autonomous execution + planning** | Recall a skill conversationally; the AI plans and carries it out | 🟡 MVP: plan generation + **human approval**; execution is *simulated* |
+| 4 | **Autonomous execution + planning** | Recall a skill conversationally; the AI plans and carries it out | ✅ Phase 1: **real** computer-use loop behind an approval gate + STOP kill switch |
 
-The hard, unsolved part is Pillar 4's *reliable* execution. The MVP deliberately
-stops at "propose a plan the human approves," because driving a real machine
-autonomously is where correctness and safety risk concentrate.
+Pillar 4 now actually drives the machine: after you approve a plan, an agentic
+loop (`lib/agent.js`) runs Claude's computer-use tool, executing each click/type/
+scroll via nut.js (`lib/executor.js`) and re-screenshotting to verify. This is
+where correctness and safety risk concentrate, so it is guarded by a start-
+approval, a per-step abort check, a global kill switch, and a step cap. The open
+frontier is *reliability* (pixel grounding is brittle — see Phase 4).
 
 ---
 
@@ -86,16 +89,20 @@ recording. That's what lets it be re-applied when the screen differs.
 
 ## 4. Roadmap — MVP → autonomy
 
-### Phase 0 — MVP (this repo)
+### Phase 0 — MVP ✅
 - On-demand frame capture, teach-by-demonstration, skill library, conversational
-  recall, plan generation, approval modal (execution simulated).
+  recall, plan generation, approval modal.
 
-### Phase 1 — Real, gated execution
-- Add an execution backend (`nut.js` / `robotjs`, or Claude **computer-use** with
-  the [computer-use tool](https://docs.anthropic.com/en/docs/build-with-claude/computer-use)).
-- Execute the approved plan **one step at a time**, re-screenshotting between
-  steps so the model verifies it's on track (perceive → act → verify loop).
-- Hard stops: pause before any step flagged `risk_level: high`.
+### Phase 1 — Real, gated execution ✅ (this repo)
+- Execution backend via **nut.js** (`lib/executor.js`) driven by Claude
+  **computer-use** ([docs](https://docs.anthropic.com/en/docs/build-with-claude/computer-use))
+  in an agentic loop (`lib/agent.js`).
+- Executes **one action at a time**, re-screenshotting between steps so the model
+  verifies it's on track (perceive → act → verify loop).
+- Guards: start-approval, per-step `shouldAbort()` kill switch, global
+  Ctrl/Cmd+Shift+X emergency stop, and a `SA_MAX_STEPS` cap.
+- **Next hardening:** auto-pause before any step the planner flagged
+  `risk_level: high` and require a second confirmation.
 
 ### Phase 2 — Continuous, private perception
 - Move from "record window" to always-on capture with an on-device ring buffer.
@@ -134,8 +141,10 @@ recording. That's what lets it be re-applied when the screen differs.
 
 | File | Role |
 |------|------|
-| `main.js` | Electron main: capture, IPC, shortcut, wiring |
+| `main.js` | Electron main: capture, IPC, shortcuts, run wiring, kill switch |
 | `preload.js` | Safe bridge exposed to the UI |
 | `lib/skills.js` | Skill persistence + prompt context |
-| `lib/claude.js` | All Anthropic calls (learn / chat / plan) |
-| `renderer/` | The three-tab UI |
+| `lib/claude.js` | Anthropic calls for learn / chat / plan |
+| `lib/executor.js` | OS input layer (nut.js) — the "hands" |
+| `lib/agent.js` | computer-use agentic loop — the "brain" |
+| `renderer/` | The three-tab UI + live run overlay |

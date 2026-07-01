@@ -87,13 +87,24 @@
         <div id="plan-content"></div>
         <div class="modal-actions">
           <button id="plan-cancel" class="ghost">Cancel</button>
-          <button id="plan-approve" class="primary">Approve &amp; run (simulated)</button>
+          <button id="plan-approve" class="primary">Approve &amp; run</button>
         </div>
         <p class="muted tiny">
-          Execution is simulated in this MVP — approving logs the plan rather than driving your
-          mouse. See DESIGN.md for the real-execution phase.
+          Approving lets the assistant <strong>take control of your mouse and keyboard</strong> to
+          carry out the plan. You can stop it any time with the STOP button or
+          <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>.
         </p>
       </div>
+    </div>
+
+    <!-- LIVE RUN OVERLAY -->
+    <div id="run-overlay" class="run-overlay hidden">
+      <div class="run-head">
+        <span class="run-status" id="run-status">● running</span>
+        <span id="run-goal" class="muted"></span>
+        <button id="run-stop" class="danger stop-btn">■ STOP (Ctrl/Cmd+Shift+X)</button>
+      </div>
+      <div id="run-log" class="run-log"></div>
     </div>
 
     <script src="app.js"></script>
