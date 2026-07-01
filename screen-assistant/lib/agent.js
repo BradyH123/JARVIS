@@ -28,6 +28,40 @@ const MAX_STEPS = Number(process.env.SA_MAX_STEPS || 40);
 // Claude grounds best on a ~XGA-sized view; we downscale the screenshot to this
 // width and scale coordinates back up to real pixels when executing.
 const TARGET_WIDTH = Number(process.env.SA_TARGET_WIDTH || 1280);
+// If set, every single action requires human confirmation (paranoid mode).
+const CONFIRM_EVERY = /^(1|true|yes)$/i.test(process.env.SA_CONFIRM_EVERY || '');
+
+// Heuristic backstop: clearly destructive/quit shortcuts force a confirmation
+// even if the model forgot to ask. Kept small to avoid nagging.
+const RISKY_KEY_COMBOS = ['cmd+q', 'ctrl+q', 'cmd+w', 'ctrl+w', 'cmd+shift+q'];
+
+function looksRisky(action) {
+  if (!action) return false;
+  if (action.action === 'key') {
+    const spec = String(action.text || '').toLowerCase().replace(/\s/g, '');
+    return RISKY_KEY_COMBOS.includes(spec);
+  }
+  return false;
+}
+
+// Custom tool the model must call before irreversible/outbound actions.
+const PERMISSION_TOOL = {
+  name: 'ask_permission',
+  description:
+    'Ask the human operator to approve a risky action BEFORE performing it. You MUST ' +
+    'call this first for anything destructive, irreversible, or outbound: deleting, ' +
+    'overwriting, sending a message/email, posting, purchasing/paying, submitting a ' +
+    'form with real consequences, or quitting an app with unsaved work. Only proceed ' +
+    'with the action if this returns APPROVED.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string', description: 'Plainly, what you are about to do and why.' },
+      risk: { type: 'string', enum: ['low', 'medium', 'high'] },
+    },
+    required: ['summary'],
+  },
+};
 
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -57,6 +91,9 @@ async function runSession(opts) {
   const { goal, skill, capture, execute } = opts;
   const onEvent = opts.onEvent || (() => {});
   const shouldAbort = opts.shouldAbort || (() => false);
+  // Human confirmation gate. Defaults to DENY when no handler is wired, so a
+  // misconfiguration fails safe rather than auto-approving risky actions.
+  const confirm = opts.confirm || (async () => false);
   const client = getClient();
 
   // First screenshot establishes the coordinate scale.
@@ -76,14 +113,16 @@ async function runSession(opts) {
       display_height_px: dispH,
       display_number: 1,
     },
+    PERMISSION_TOOL,
   ];
 
   const system =
     'You are an autonomous desktop operator. You control the real computer via the ' +
     'computer tool (mouse, keyboard). Work step by step toward the goal, taking a ' +
     'screenshot to verify the result after meaningful actions. Be careful and precise. ' +
-    'If an action is destructive, irreversible, or sends something to other people ' +
-    '(delete, send, pay, post), do it only if the goal clearly requires it. When the ' +
+    'Before ANY destructive, irreversible, or outbound action (delete, overwrite, send, ' +
+    'post, pay, submit-with-consequences, quit-with-unsaved-work), you MUST call the ' +
+    'ask_permission tool first and only continue if it returns APPROVED. When the ' +
     'goal is complete, STOP and briefly state that it is done — do not keep acting.' +
     (skill
       ? '\n\nThe user previously taught this technique; follow it:\n' +
@@ -150,6 +189,27 @@ async function runSession(opts) {
         return { status: 'aborted', steps: step };
       }
 
+      // The model explicitly asking to proceed with a risky action.
+      if (tu.name === 'ask_permission') {
+        const inp = tu.input || {};
+        onEvent({ type: 'permission', summary: inp.summary || '', risk: inp.risk || 'medium' });
+        const approved = await confirm({ summary: inp.summary || '', risk: inp.risk || 'medium' });
+        onEvent({ type: 'permission-result', approved });
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: tu.id,
+          content: [
+            {
+              type: 'text',
+              text: approved
+                ? 'APPROVED — the operator approved this action. Proceed.'
+                : 'DENIED — the operator declined. Do not perform it; find a safe alternative or stop.',
+            },
+          ],
+        });
+        continue;
+      }
+
       const action = tu.input || {};
       // Scale coordinates from Claude's view into real pixels.
       const real = { ...action };
@@ -158,6 +218,23 @@ async function runSession(opts) {
         real.start_coordinate = toReal(action.start_coordinate[0], action.start_coordinate[1]);
 
       onEvent({ type: 'action', action: action.action, detail: describe(action) });
+
+      // Heuristic/paranoid backstop: confirm before executing if the action is
+      // clearly destructive or if paranoid mode is on.
+      if (action.action !== 'screenshot' && (CONFIRM_EVERY || looksRisky(action))) {
+        const summary = `About to ${describe(action)}`;
+        onEvent({ type: 'permission', summary, risk: looksRisky(action) ? 'high' : 'medium' });
+        const approved = await confirm({ summary, risk: looksRisky(action) ? 'high' : 'medium' });
+        onEvent({ type: 'permission-result', approved });
+        if (!approved) {
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: tu.id,
+            content: [{ type: 'text', text: 'DENIED by operator — action not performed. Choose a safe alternative or stop.' }],
+          });
+          continue;
+        }
+      }
 
       let result = { ok: true };
       if (action.action !== 'screenshot') {

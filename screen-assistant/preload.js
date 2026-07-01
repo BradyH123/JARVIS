@@ -19,13 +19,26 @@ contextBridge.exposeInMainWorld('assistant', {
   },
 
   chat: (history) => ipcRenderer.invoke('assistant:chat', history),
+  command: (transcript) => ipcRenderer.invoke('assistant:command', transcript),
   plan: (skillId) => ipcRenderer.invoke('assistant:plan', skillId),
   configInfo: () => ipcRenderer.invoke('config:info'),
 
   // Autonomous execution — actually drives the machine.
   execute: (payload) => ipcRenderer.invoke('assistant:execute', payload),
   stop: () => ipcRenderer.invoke('assistant:stop'),
+  confirm: (payload) => ipcRenderer.invoke('assistant:confirm', payload),
   onAgentEvent: (cb) => ipcRenderer.on('agent:event', (_e, evt) => cb(evt)),
+
+  // Phase 2: continuous private capture.
+  watch: {
+    start: () => ipcRenderer.invoke('watch:start'),
+    stop: () => ipcRenderer.invoke('watch:stop'),
+    pause: () => ipcRenderer.invoke('watch:pause'),
+    resume: () => ipcRenderer.invoke('watch:resume'),
+    status: () => ipcRenderer.invoke('watch:status'),
+    recent: (n) => ipcRenderer.invoke('watch:recent', n),
+  },
+  onWatchEvent: (cb) => ipcRenderer.on('watch:event', (_e, evt) => cb(evt)),
 
   // Global-shortcut push from main → renderer.
   onToggleRecord: (cb) => ipcRenderer.on('shortcut:toggle-record', cb),

@@ -100,15 +100,26 @@ recording. That's what lets it be re-applied when the screen differs.
 - Executes **one action at a time**, re-screenshotting between steps so the model
   verifies it's on track (perceive → act → verify loop).
 - Guards: start-approval, per-step `shouldAbort()` kill switch, global
-  Ctrl/Cmd+Shift+X emergency stop, and a `SA_MAX_STEPS` cap.
-- **Next hardening:** auto-pause before any step the planner flagged
-  `risk_level: high` and require a second confirmation.
+  Ctrl/Cmd+Shift+X emergency stop, a `SA_MAX_STEPS` cap, and a **high-risk
+  approval gate** — an `ask_permission` tool the model must call before
+  destructive/outbound actions (with a heuristic backstop and an optional
+  `SA_CONFIRM_EVERY` paranoid mode).
 
-### Phase 2 — Continuous, private perception
-- Move from "record window" to always-on capture with an on-device ring buffer.
-- **Privacy first:** local-only by default, per-app allow/deny lists, a global
-  pause, automatic redaction of password fields, and clear recording indicators.
-- Only send frames to the model on explicit user action, or with opt-in.
+### Phase 2 — Continuous, private perception ✅ (this repo)
+- Always-on, opt-in ring buffer of recent frames (`lib/monitor.js`), **in memory
+  only** — never written to disk, never sent anywhere unless the user turns a
+  slice into a skill ("name what I just did").
+- **Privacy first:** off by default, a global pause, bounded buffer, buffer
+  dropped on stop, and a live indicator.
+- **Still to harden:** per-app allow/deny lists and automatic redaction of
+  password fields.
+
+### Phase 2.5 — Voice control ✅ (this repo)
+- Emulates the realtime-voice-agent pattern: spoken command → transcription →
+  **tool-calling intent router** (`run_skill` / `run_goal` / `reply`, in
+  `claude.js:routeCommand`) → the approval-gated execution engine.
+- Speech capture via the browser SpeechRecognition API with a typed fallback;
+  the STT backend is swappable.
 
 ### Phase 3 — Skills that compose into plans
 - Let the assistant chain skills for "large-scale plans/strategies": a planner
@@ -146,5 +157,7 @@ recording. That's what lets it be re-applied when the screen differs.
 | `lib/skills.js` | Skill persistence + prompt context |
 | `lib/claude.js` | Anthropic calls for learn / chat / plan |
 | `lib/executor.js` | OS input layer (nut.js) — the "hands" |
-| `lib/agent.js` | computer-use agentic loop — the "brain" |
-| `renderer/` | The three-tab UI + live run overlay |
+| `lib/agent.js` | computer-use agentic loop + approval gate — the "brain" |
+| `lib/monitor.js` | Phase 2 in-memory watch buffer — continuous perception |
+| `lib/claude.js` | learn / chat / plan / **routeCommand** (voice intent) |
+| `renderer/` | Teach / Watch / Skills / Assistant tabs, run overlay, voice mic |

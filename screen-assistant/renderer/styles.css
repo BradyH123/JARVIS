@@ -121,6 +121,8 @@ input[type='text'], textarea {
 .msg .run-btn { margin-top: 8px; }
 .chat-input { display: flex; gap: 8px; }
 .chat-input input { flex: 1; }
+.mic { min-width: 44px; }
+.mic.listening { background: var(--danger); border-color: var(--danger); color: #fff; }
 
 .modal {
   position: fixed; inset: 0; background: rgba(0,0,0,0.6);
@@ -160,3 +162,16 @@ input[type='text'], textarea {
 .run-line.info { color: var(--ok); }
 .run-line.warn { color: #ffcc66; }
 .run-line.error { color: var(--danger); }
+.run-line.perm { color: #ffcc66; font-weight: 600; }
+
+.confirm-box { border-top: 1px solid var(--danger); padding: 12px; background: rgba(255,107,107,0.08); }
+.confirm-msg { margin-bottom: 10px; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* watch tab */
+.watch-controls { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
+.watch-preview { margin: 10px 0; }
+.watch-preview img { max-width: 100%; border-radius: 8px; border: 1px solid var(--border); display: none; }
+.watch-teach { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
+.watch-teach input[type='number'] { width: 90px; }
+#watch-toggle.on { background: var(--danger); border-color: var(--danger); }

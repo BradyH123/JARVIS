@@ -12,6 +12,7 @@ document.querySelectorAll('.tab').forEach((tab) => {
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
     if (tab.dataset.tab === 'skills') loadSkills();
+    if (tab.dataset.tab === 'watch') api.watch.status().then(renderWatchStatus);
   });
 });
 
@@ -281,6 +282,16 @@ api.onAgentEvent((evt) => {
     case 'action':
       logRun('action', '➤ ' + (evt.detail || evt.action));
       break;
+    case 'permission':
+      logRun('perm', `⏸ needs approval (${evt.risk || 'medium'}): ${evt.summary || ''}`);
+      break;
+    case 'confirm-request':
+      showConfirm(evt);
+      break;
+    case 'permission-result':
+      hideConfirm();
+      logRun(evt.approved ? 'info' : 'warn', evt.approved ? '✓ approved' : '✗ denied');
+      break;
     case 'abort-requested':
       logRun('warn', 'Emergency stop received.');
       break;
@@ -310,6 +321,165 @@ api.onAgentEvent((evt) => {
     default:
       break;
   }
+});
+
+/* ---------- voice control (emulates realtime voice → intent → action) ---------- */
+const micBtn = document.getElementById('btn-mic');
+const voiceHint = document.getElementById('voice-hint');
+let recognition = null;
+let listening = false;
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) {
+  micBtn.disabled = true;
+  micBtn.title = 'Speech recognition not available in this build — type instead';
+  voiceHint.innerHTML =
+    '🎙 Speech capture isn’t available in this Electron build. You can still type in the box and ' +
+    'press Send to chat, or use the Skills tab to run a skill. See README for enabling speech-to-text.';
+} else {
+  recognition = new SR();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript.trim();
+    chatText.value = transcript;
+    runCommand(transcript);
+  };
+  recognition.onerror = (e) => {
+    voiceHint.textContent = 'Voice error: ' + e.error;
+  };
+  recognition.onend = () => {
+    listening = false;
+    micBtn.classList.remove('listening');
+    micBtn.textContent = '🎙';
+  };
+
+  micBtn.addEventListener('click', () => {
+    if (listening) {
+      recognition.stop();
+      return;
+    }
+    try {
+      recognition.start();
+      listening = true;
+      micBtn.classList.add('listening');
+      micBtn.textContent = '● listening…';
+    } catch (err) {
+      voiceHint.textContent = 'Could not start mic: ' + err.message;
+    }
+  });
+}
+
+/**
+ * Route a command (spoken or typed) to an action: run a skill, run a one-off
+ * goal, or reply. Skills/goals go straight into the gated run overlay — the
+ * per-step approval gate still protects risky actions.
+ */
+async function runCommand(text) {
+  addMessage('user', '🎙 ' + text);
+  const thinking = document.createElement('div');
+  thinking.className = 'msg assistant';
+  thinking.textContent = 'routing…';
+  chatLog.appendChild(thinking);
+  try {
+    const routed = await api.command(text);
+    thinking.remove();
+    if (routed.action === 'skill') {
+      addMessage('assistant', `Running skill: ${routed.skill_name || routed.skill_id}`);
+      startRun({ skillId: routed.skill_id, goal: routed.skill_name });
+    } else if (routed.action === 'goal') {
+      addMessage('assistant', `On it — working toward: ${routed.goal}`);
+      startRun({ goal: routed.goal });
+    } else {
+      addMessage('assistant', routed.message || '(no reply)');
+    }
+  } catch (e) {
+    thinking.remove();
+    addMessage('assistant', 'Error: ' + e.message);
+  }
+}
+
+/* ---------- risky-action confirmation ---------- */
+const confirmBox = document.getElementById('confirm-box');
+const confirmMsg = document.getElementById('confirm-msg');
+let pendingConfirmId = null;
+
+function showConfirm(evt) {
+  pendingConfirmId = evt.id;
+  confirmMsg.innerHTML =
+    `<strong class="risk-${evt.risk || 'medium'}">Approval needed (${escapeHtml(evt.risk || 'medium')} risk)</strong><br>` +
+    escapeHtml(evt.summary || 'The assistant wants to perform a sensitive action.');
+  confirmBox.classList.remove('hidden');
+}
+function hideConfirm() {
+  confirmBox.classList.add('hidden');
+  pendingConfirmId = null;
+}
+async function answerConfirm(approved) {
+  if (!pendingConfirmId) return;
+  await api.confirm({ id: pendingConfirmId, approved });
+  hideConfirm();
+}
+document.getElementById('confirm-approve').addEventListener('click', () => answerConfirm(true));
+document.getElementById('confirm-deny').addEventListener('click', () => answerConfirm(false));
+
+/* ---------- watch tab (Phase 2) ---------- */
+const watchToggle = document.getElementById('watch-toggle');
+const watchPause = document.getElementById('watch-pause');
+const watchMeta = document.getElementById('watch-meta');
+const watchThumb = document.getElementById('watch-thumb');
+const watchEmpty = document.getElementById('watch-empty');
+let watching = false;
+let watchPaused = false;
+
+function renderWatchStatus(s) {
+  watching = s.active;
+  watchPaused = s.paused;
+  watchToggle.textContent = s.active ? '■ Stop watching' : '▶ Start watching';
+  watchToggle.classList.toggle('on', s.active);
+  watchPause.disabled = !s.active;
+  watchPause.textContent = s.paused ? 'Resume' : 'Pause';
+  watchMeta.textContent = s.active
+    ? `${s.paused ? 'paused' : 'watching'} · ${s.count}/${s.maxFrames} frames buffered`
+    : 'off';
+  if (s.latest) {
+    watchThumb.src = s.latest;
+    watchThumb.style.display = 'block';
+    watchEmpty.style.display = 'none';
+  } else {
+    watchThumb.style.display = 'none';
+    watchEmpty.style.display = 'block';
+  }
+}
+
+watchToggle.addEventListener('click', async () => {
+  renderWatchStatus(watching ? await api.watch.stop() : await api.watch.start());
+});
+watchPause.addEventListener('click', async () => {
+  renderWatchStatus(watchPaused ? await api.watch.resume() : await api.watch.pause());
+});
+api.onWatchEvent((s) => renderWatchStatus(s));
+
+// Turn buffered recent activity into a skill: pull frames, jump to Teach.
+document.getElementById('watch-teach-btn').addEventListener('click', async () => {
+  const n = Number(document.getElementById('watch-frames-n').value) || 12;
+  const recent = await api.watch.recent(n);
+  if (!recent || !recent.length) {
+    watchMeta.textContent = 'nothing buffered yet — start watching first';
+    return;
+  }
+  frames = recent.slice();
+  framesStrip.innerHTML = '';
+  recent.forEach((src) => {
+    const img = document.createElement('img');
+    img.src = src;
+    framesStrip.appendChild(img);
+  });
+  nameBlock.classList.remove('hidden');
+  recordMeta.textContent = `${recent.length} frame(s) pulled from watch buffer — name it below`;
+  document.querySelector('.tab[data-tab="record"]').click();
 });
 
 /* ---------- util ---------- */

@@ -30,11 +30,19 @@ const { SkillStore } = require('./lib/skills');
 const claude = require('./lib/claude');
 const agent = require('./lib/agent');
 const executor = require('./lib/executor');
+const { WatchBuffer } = require('./lib/monitor');
 
 let mainWindow = null;
 let store = null;
+let watch = null; // Phase 2 always-on capture buffer
 let sessionAbort = false; // kill switch for the autonomous loop
 let sessionRunning = false;
+const pendingConfirms = new Map(); // id -> resolve(boolean) for permission gates
+
+function resolveAllConfirms(value) {
+  for (const resolve of pendingConfirms.values()) resolve(value);
+  pendingConfirms.clear();
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -122,6 +130,18 @@ function registerIpc() {
     return claude.chat(history || [], store.contextForPrompt());
   });
 
+  // Voice/NL command → intent routing (run a skill, run a goal, or reply).
+  ipcMain.handle('assistant:command', async (_e, transcript) => {
+    const routed = await claude.routeCommand(String(transcript || ''), store.contextForPrompt());
+    if (routed.action === 'skill') {
+      const skill = store.get(routed.skill_id);
+      routed.skill_name = skill ? skill.name : null;
+      if (!skill) routed.action = 'reply'; // stale id → don't run
+      if (!skill) routed.message = "I couldn't find that skill anymore.";
+    }
+    return routed;
+  });
+
   // Build (but do not run) an execution plan for a skill against the live screen.
   ipcMain.handle('assistant:plan', async (_e, skillId) => {
     const skill = store.get(skillId);
@@ -170,6 +190,15 @@ function registerIpc() {
         execute: executor.perform,
         onEvent: send,
         shouldAbort: () => sessionAbort,
+        // Human confirmation gate for risky actions. Fails safe: a stopped run
+        // or a closed window resolves pending prompts as denied.
+        confirm: ({ summary, risk }) =>
+          new Promise((resolve) => {
+            if (sessionAbort) return resolve(false);
+            const id = crypto.randomUUID();
+            pendingConfirms.set(id, resolve);
+            send({ type: 'confirm-request', id, summary, risk });
+          }),
       });
       send({ type: 'finished', ...result });
       return result;
@@ -183,8 +212,27 @@ function registerIpc() {
 
   ipcMain.handle('assistant:stop', async () => {
     sessionAbort = true;
+    resolveAllConfirms(false); // unblock any pending permission prompt as denied
     return { stopped: true };
   });
+
+  // Renderer's answer to a confirm-request.
+  ipcMain.handle('assistant:confirm', async (_e, { id, approved }) => {
+    const resolve = pendingConfirms.get(id);
+    if (resolve) {
+      pendingConfirms.delete(id);
+      resolve(Boolean(approved));
+    }
+    return { ok: true };
+  });
+
+  // --- Phase 2: continuous private capture ---
+  ipcMain.handle('watch:start', async () => watch.start());
+  ipcMain.handle('watch:stop', async () => watch.stop());
+  ipcMain.handle('watch:pause', async () => watch.pause());
+  ipcMain.handle('watch:resume', async () => watch.resume());
+  ipcMain.handle('watch:status', async () => watch.status());
+  ipcMain.handle('watch:recent', async (_e, n) => watch.recent(n));
 
   ipcMain.handle('config:info', async () => ({
     model: claude.DEFAULT_MODEL,
@@ -209,6 +257,7 @@ function registerShortcuts() {
   // Emergency stop for the autonomous loop — works even when the app isn't focused.
   const stopOk = globalShortcut.register('CommandOrControl+Shift+X', () => {
     sessionAbort = true;
+    resolveAllConfirms(false);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('agent:event', { type: 'abort-requested' });
     }
@@ -218,6 +267,14 @@ function registerShortcuts() {
 
 app.whenReady().then(() => {
   store = new SkillStore(path.join(app.getPath('userData'), 'skills.json'));
+  watch = new WatchBuffer({
+    capture: captureSized,
+    onTick: (status) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('watch:event', status);
+      }
+    },
+  });
   registerIpc();
   createWindow();
   registerShortcuts();
@@ -229,6 +286,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  if (watch) watch.stop();
 });
 
 app.on('window-all-closed', () => {

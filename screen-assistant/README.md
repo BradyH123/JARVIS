@@ -26,6 +26,18 @@ instantly. See [`DESIGN.md`](./DESIGN.md) for the full architecture and roadmap.
 - **Autonomous execution**: after you approve, the assistant drives the real
   mouse/keyboard to accomplish the goal, screenshotting to verify each step, with
   a live action log and a STOP button. Guarded by a step cap and the kill switch.
+- **High-risk approval gate**: before anything destructive/irreversible/outbound
+  (delete, send, pay, post, quit-with-unsaved-work) the run **pauses** for an
+  explicit Approve/Deny — driven by an `ask_permission` tool the model must call,
+  with a heuristic backstop for clearly destructive shortcuts.
+- **Voice control** *(concept from realtime voice agents)*: click the mic and
+  speak a command; it's transcribed, Claude **routes the intent** (function-call
+  style) to a matching skill or a one-off goal, and the gated run carries it out —
+  spoken intent → action, no keyboard.
+- **Continuous private watching (Phase 2)**: an opt-in, in-memory, local-only
+  rolling buffer of recent frames. Nothing is written to disk or sent anywhere
+  unless you turn a slice of it into a skill — so you can name something you
+  *just* did. Pause any time.
 
 ## Requirements
 
@@ -55,6 +67,12 @@ On first launch you'll need to grant OS permissions:
 If the top bar shows `⚠ no OS control`, the native input module didn't load —
 re-run `npm install` and check the permissions above.
 
+For **voice control**, the app uses the browser SpeechRecognition API. If your
+Electron build lacks a speech backend the mic is disabled and you can type
+commands instead — the intent routing is identical. To wire a dedicated
+speech-to-text provider, replace the capture in `renderer/app.js` (voice section)
+with your STT of choice and call `assistant.command(transcript)`.
+
 Global shortcuts (work from anywhere):
 
 - **Ctrl/Cmd + Shift + R** — toggle the demonstration recorder.
@@ -74,6 +92,9 @@ Global shortcuts (work from anywhere):
 | `SA_MAX_STEPS` | hard cap on autonomous steps per run | `40` |
 | `SA_ACTION_DELAY_MS` | settle delay after each action | `350` |
 | `SA_TARGET_WIDTH` | width Claude "sees"; coords scaled to real px | `1280` |
+| `SA_CONFIRM_EVERY` | require confirmation before *every* action (paranoid) | off |
+| `SA_WATCH_INTERVAL_MS` | Phase 2 capture sampling period | `3000` |
+| `SA_WATCH_MAX_FRAMES` | Phase 2 rolling buffer size | `40` |
 
 > **Computer-use requires a model that supports it.** Point
 > `SA_COMPUTER_USE_MODEL`/`SA_COMPUTER_TOOL_TYPE`/`SA_COMPUTER_BETA` at a
@@ -87,11 +108,23 @@ screen-assistant/
 ├── preload.js         safe bridge to the UI
 ├── lib/
 │   ├── skills.js      skill memory store (skills.json)
-│   ├── claude.js      Anthropic calls: learn / chat / plan
+│   ├── claude.js      Anthropic calls: learn / chat / plan / route-command
 │   ├── executor.js    OS input layer (nut.js) — the "hands"
-│   └── agent.js       computer-use agentic loop — the "brain"
-└── renderer/          three-tab UI (Teach / Skills / Assistant) + run overlay
+│   ├── agent.js       computer-use agentic loop + approval gate — the "brain"
+│   └── monitor.js     Phase 2 in-memory watch buffer — continuous perception
+└── renderer/          Teach / Watch / Skills / Assistant tabs + run overlay + voice
 ```
+
+## Voice control — the concept, and its lineage
+
+The voice layer emulates the pattern popularized by realtime voice agents
+(spoken command → low-latency intent recognition → **function/tool call** →
+execute, reading app state along the way). Here that pattern runs on Claude:
+your words are routed by a tool-calling step (`run_skill` / `run_goal` / `reply`)
+into the same approval-gated execution engine. Background reading:
+[OpenAI gpt-realtime](https://openai.com/index/introducing-gpt-realtime/),
+[OpenAI Realtime API guide](https://developers.openai.com/api/docs/guides/realtime),
+[AssemblyAI: how voice agents work](https://www.assemblyai.com/blog/ai-voice-agents).
 
 ## Safety
 

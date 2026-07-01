@@ -17,6 +17,7 @@
 
     <nav class="tabs">
       <button class="tab active" data-tab="record">Teach</button>
+      <button class="tab" data-tab="watch">Watch</button>
       <button class="tab" data-tab="skills">Skills</button>
       <button class="tab" data-tab="assistant">Assistant</button>
     </nav>
@@ -54,6 +55,40 @@
         </div>
       </section>
 
+      <!-- WATCH (Phase 2: continuous private capture) -->
+      <section class="panel" id="tab-watch">
+        <div class="card">
+          <h2>Continuous watching <span class="muted">(private &amp; local)</span></h2>
+          <p class="muted">
+            When on, the assistant keeps a short rolling buffer of recent screen frames
+            <strong>in memory only</strong> — nothing is written to disk, and nothing leaves your
+            machine unless you turn it into a skill. Off by default. Pause any time.
+          </p>
+
+          <div class="watch-controls">
+            <button id="watch-toggle" class="primary">▶ Start watching</button>
+            <button id="watch-pause" class="ghost" disabled>Pause</button>
+            <span id="watch-meta" class="muted">off</span>
+          </div>
+
+          <div class="watch-preview">
+            <img id="watch-thumb" alt="latest frame" />
+            <p class="muted tiny" id="watch-empty">No frames buffered yet.</p>
+          </div>
+
+          <div class="watch-teach">
+            <p class="muted">
+              Did something worth saving? Capture what you <em>just</em> did from the buffer:
+            </p>
+            <label>
+              How many recent frames?
+              <input id="watch-frames-n" type="number" min="1" max="40" value="12" />
+            </label>
+            <button id="watch-teach-btn">Turn recent activity into a skill →</button>
+          </div>
+        </div>
+      </section>
+
       <!-- SKILLS -->
       <section class="panel" id="tab-skills">
         <div class="card">
@@ -73,9 +108,14 @@
           </p>
           <div id="chat-log" class="chat-log"></div>
           <div class="chat-input">
-            <input id="chat-text" type="text" placeholder="e.g. File my weekly report" />
+            <button id="btn-mic" class="ghost mic" title="Hold-to-talk / click to toggle voice">🎙</button>
+            <input id="chat-text" type="text" placeholder="Speak or type — e.g. File my weekly report" />
             <button id="btn-send" class="primary">Send</button>
           </div>
+          <p class="muted tiny" id="voice-hint">
+            🎙 Voice control: click the mic and speak a command. A matching skill runs, or a one-off
+            goal is carried out — spoken intent → action, no keyboard needed.
+          </p>
         </div>
       </section>
     </main>
@@ -105,6 +145,13 @@
         <button id="run-stop" class="danger stop-btn">■ STOP (Ctrl/Cmd+Shift+X)</button>
       </div>
       <div id="run-log" class="run-log"></div>
+      <div id="confirm-box" class="confirm-box hidden">
+        <div class="confirm-msg" id="confirm-msg"></div>
+        <div class="confirm-actions">
+          <button id="confirm-deny" class="ghost">Deny</button>
+          <button id="confirm-approve" class="danger">Approve this action</button>
+        </div>
+      </div>
     </div>
 
     <script src="app.js"></script>

@@ -199,4 +199,72 @@ async function planExecution(skill, screenshot) {
   };
 }
 
-module.exports = { understandDemonstration, chat, planExecution, DEFAULT_MODEL };
+/**
+ * Route a spoken/typed command to an action using tool-calling — the same
+ * "voice → intent → function call → execute" pattern behind realtime voice
+ * agents, but grounded in the user's own learned skills and running on Claude.
+ *
+ * @param {string} transcript     what the user said/typed
+ * @param {string} skillsContext  output of SkillStore.contextForPrompt()
+ * @returns {Promise<{action:'skill'|'goal'|'reply', skill_id?, goal?, message?}>}
+ */
+async function routeCommand(transcript, skillsContext) {
+  const client = getClient();
+
+  const tools = [
+    {
+      name: 'run_skill',
+      description: 'Run a specific skill the user has already taught. Use when the command clearly matches one.',
+      input_schema: {
+        type: 'object',
+        properties: { skill_id: { type: 'string' }, why: { type: 'string' } },
+        required: ['skill_id'],
+      },
+    },
+    {
+      name: 'run_goal',
+      description:
+        'Autonomously carry out a one-off goal on the computer when no stored skill fits but the ' +
+        'intent is a concrete task to perform.',
+      input_schema: {
+        type: 'object',
+        properties: { goal: { type: 'string' } },
+        required: ['goal'],
+      },
+    },
+    {
+      name: 'reply',
+      description: 'Just answer or ask a clarifying question — no computer action.',
+      input_schema: {
+        type: 'object',
+        properties: { message: { type: 'string' } },
+        required: ['message'],
+      },
+    },
+  ];
+
+  const system =
+    'You are the intent router for a voice-driven desktop assistant. Given the user command and ' +
+    'their skill library, call exactly ONE tool: run_skill if it matches a taught skill, run_goal ' +
+    'for a concrete one-off computer task, or reply otherwise. Prefer run_skill when a skill fits.\n\n' +
+    'Skill library:\n' +
+    skillsContext;
+
+  const message = await client.messages.create({
+    model: DEFAULT_MODEL,
+    max_tokens: 512,
+    system,
+    tools,
+    tool_choice: { type: 'any' },
+    messages: [{ role: 'user', content: transcript }],
+  });
+
+  const call = (message.content || []).find((b) => b.type === 'tool_use');
+  if (!call) return { action: 'reply', message: textOf(message) || "Sorry, I didn't catch that." };
+
+  if (call.name === 'run_skill') return { action: 'skill', skill_id: call.input.skill_id };
+  if (call.name === 'run_goal') return { action: 'goal', goal: call.input.goal };
+  return { action: 'reply', message: call.input.message || '' };
+}
+
+module.exports = { understandDemonstration, chat, planExecution, routeCommand, DEFAULT_MODEL };
