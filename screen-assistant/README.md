@@ -49,9 +49,27 @@ instantly. See [`DESIGN.md`](./DESIGN.md) for the full architecture and roadmap.
 ```bash
 cd screen-assistant
 npm install
-cp .env.example .env      # then paste your ANTHROPIC_API_KEY into .env
 npm start
 ```
+
+On first launch, click the **⚙ Settings** button and paste your Anthropic API
+key — it's stored **encrypted** via your OS keychain (Electron `safeStorage`).
+No `.env` file needed. (Developers can still use `.env`; a saved setting always
+wins over an env var, which wins over the built-in default.)
+
+Run the tests any time with `npm test` (no key or network needed).
+
+### Building installers
+
+```bash
+npm run dist          # current OS
+npm run dist:mac      # dmg + zip   (needs macOS)
+npm run dist:win      # nsis installer
+npm run dist:linux    # AppImage
+```
+
+See [`SHIPPING.md`](./SHIPPING.md) for icons, code signing, and the pre-release
+manual test.
 
 On first launch you'll need to grant OS permissions:
 

@@ -1,0 +1,79 @@
+# Shipping checklist
+
+What stands between the current code and a build you can hand to someone. Ordered
+by what blocks a release vs. what polishes it.
+
+## Status legend
+✅ done in-repo · 🟩 config ready, needs your assets/accounts · ◻ not started
+
+---
+
+## 1. First-run experience
+- ✅ **In-app Settings** (⚙): paste API key, pick model, step cap, paranoid mode —
+  no `.env` editing required.
+- ✅ **Encrypted key storage** via Electron `safeStorage` (OS keychain), with a
+  visible storage-mode indicator and a "Test key" button.
+- ✅ Config resolves **saved setting → env var → default**, so developers can
+  still use `.env` while end users never see it.
+- ◻ **Onboarding panel** on first launch (no key set) that walks through key +
+  OS permissions instead of just showing a warning. *(Nice-to-have.)*
+
+## 2. Packaging
+- ✅ **electron-builder** configured for mac (dmg/zip), win (nsis), linux
+  (AppImage). Build: `npm run dist` (or `dist:mac`/`dist:win`/`dist:linux`).
+- ✅ **macOS entitlements** (`build/entitlements.mac.plist`) for JIT, mic, and
+  Apple Events; Info.plist usage strings for mic/screen/automation.
+- 🟩 **App icon** — add `build/icon.icns` (mac), `build/icon.ico` (win),
+  `build/icon.png` 512×512 (linux). electron-builder picks them up automatically.
+- ◻ **Native module rebuild**: `@nut-tree-fork/nut-js` is native. Ensure it's
+  built for the target arch; electron-builder handles this, but test on each OS.
+
+## 3. Code signing & distribution *(required for a smooth install)*
+- ◻ **macOS**: Apple Developer ID cert + **notarization** (set `CSC_LINK`,
+  `CSC_KEY_PASSWORD`, and `notarize` in the build config with an app-specific
+  password / API key). Without this, Gatekeeper blocks the app.
+- ◻ **Windows**: Authenticode cert to avoid SmartScreen warnings.
+- ◻ **Auto-update**: add `electron-updater` + a release feed (GitHub Releases is
+  simplest) so users get fixes.
+
+## 4. Correctness / robustness before wide release
+- ✅ **Layered safety**: approval gate, `ask_permission` tool, heuristic backstop,
+  paranoid mode, kill switch, step cap, fail-safe-deny.
+- ✅ **Smoke tests** (`npm test`) for stores, config, workflow resolution, watch
+  bounds — no Electron/network needed.
+- ◻ **Manual end-to-end pass** (the real test — see §6).
+- ◻ **Computer-use model check**: confirm the configured model + tool version are
+  enabled on your account; surface a clear error if a run 400s on the tool.
+- ◻ **Wayland note for Linux**: nut.js needs X11; detect Wayland and warn.
+
+## 5. Privacy & trust surface (Phase 4)
+- ◻ Per-app allow/deny list for the watch buffer.
+- ◻ Password-field / sensitive-region redaction before any frame is sent.
+- ◻ A visible "recording" indicator while watching is active.
+- ◻ A one-screen privacy explainer (what's local, what's sent, when).
+
+## 6. The manual smoke test (do this on each target OS before shipping)
+1. Fresh install → launch → Settings → paste key → **Test key** shows ✓.
+2. Grant Screen Recording + Accessibility when prompted; top bar shows
+   `🖱 control ready`.
+3. **Teach**: record opening an app, name it, confirm it appears in Skills.
+4. **Run** that skill → approve → watch it execute → it completes.
+5. **Decoy**: run a goal like "close this window without saving" → confirm the
+   **approval gate fires** and Deny actually stops it.
+6. **STOP**: start a run, hit Ctrl/Cmd+Shift+X → it halts immediately.
+7. **Workflow**: chain two skills → run → both steps execute in order.
+8. **Voice** (if speech available): speak a skill name → it routes and runs.
+
+## 7. Version & release
+- Bump `version` in `package.json` (currently `0.1.0`).
+- `npm test` green → `npm run dist` → smoke-test the produced installer, not just
+  `npm start`.
+- Tag the release; attach installers.
+
+---
+
+### Fastest path to a private beta
+1. Add icons (§2). 2. Build unsigned with `npm run dist`. 3. Run the §6 manual
+pass on your own machine. 4. Share the installer with a note that it's unsigned
+(testers right-click→Open on mac, "More info→Run anyway" on Windows).
+Signing/notarization (§3) is only required once you go past trusted testers.

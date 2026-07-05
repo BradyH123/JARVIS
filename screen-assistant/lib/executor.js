@@ -29,7 +29,8 @@ function loadNut() {
   return nut;
 }
 
-const ACTION_DELAY_MS = Number(process.env.SA_ACTION_DELAY_MS || 350);
+const config = require('./config');
+const actionDelayMs = () => config.getActionDelayMs();
 
 function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -214,7 +215,7 @@ async function perform(action) {
     }
 
     // Small settle delay so the UI can react before the next screenshot.
-    await delay(ACTION_DELAY_MS);
+    await delay(actionDelayMs());
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };

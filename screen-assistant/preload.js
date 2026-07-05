@@ -23,6 +23,13 @@ contextBridge.exposeInMainWorld('assistant', {
   plan: (skillId) => ipcRenderer.invoke('assistant:plan', skillId),
   configInfo: () => ipcRenderer.invoke('config:info'),
 
+  // Settings panel.
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    update: (patch) => ipcRenderer.invoke('settings:update', patch),
+    testKey: () => ipcRenderer.invoke('settings:test-key'),
+  },
+
   // Autonomous execution — actually drives the machine.
   execute: (payload) => ipcRenderer.invoke('assistant:execute', payload),
   stop: () => ipcRenderer.invoke('assistant:stop'),

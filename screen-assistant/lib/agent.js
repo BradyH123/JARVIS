@@ -20,16 +20,7 @@
  */
 
 const Anthropic = require('@anthropic-ai/sdk');
-
-const MODEL = process.env.SA_COMPUTER_USE_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
-const TOOL_TYPE = process.env.SA_COMPUTER_TOOL_TYPE || 'computer_20250124';
-const BETA_FLAG = process.env.SA_COMPUTER_BETA || 'computer-use-2025-01-24';
-const MAX_STEPS = Number(process.env.SA_MAX_STEPS || 40);
-// Claude grounds best on a ~XGA-sized view; we downscale the screenshot to this
-// width and scale coordinates back up to real pixels when executing.
-const TARGET_WIDTH = Number(process.env.SA_TARGET_WIDTH || 1280);
-// If set, every single action requires human confirmation (paranoid mode).
-const CONFIRM_EVERY = /^(1|true|yes)$/i.test(process.env.SA_CONFIRM_EVERY || '');
+const config = require('./config');
 
 // Heuristic backstop: clearly destructive/quit shortcuts force a confirmation
 // even if the model forgot to ask. Kept small to avoid nagging.
@@ -64,8 +55,8 @@ const PERMISSION_TOOL = {
 };
 
 function getClient() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set.');
+  const apiKey = config.getApiKey();
+  if (!apiKey) throw new Error('No API key set. Open Settings and paste your Anthropic API key.');
   return new Anthropic({ apiKey });
 }
 
@@ -95,6 +86,14 @@ async function runSession(opts) {
   // misconfiguration fails safe rather than auto-approving risky actions.
   const confirm = opts.confirm || (async () => false);
   const client = getClient();
+
+  // Read settings fresh at run start so Settings changes apply without restart.
+  const MODEL = config.getComputerUseModel();
+  const TOOL_TYPE = config.getComputerToolType();
+  const BETA_FLAG = config.getComputerBeta();
+  const MAX_STEPS = config.getMaxSteps();
+  const TARGET_WIDTH = config.getTargetWidth();
+  const CONFIRM_EVERY = config.getConfirmEvery();
 
   // First screenshot establishes the coordinate scale.
   const first = await capture();
@@ -277,4 +276,4 @@ function describe(action) {
   return `${action.action}${c}`;
 }
 
-module.exports = { runSession, MODEL, MAX_STEPS };
+module.exports = { runSession };

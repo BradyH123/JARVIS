@@ -26,6 +26,7 @@ const {
   screen,
 } = require('electron');
 
+const config = require('./lib/config');
 const { SkillStore } = require('./lib/skills');
 const { WorkflowStore } = require('./lib/workflows');
 const claude = require('./lib/claude');
@@ -325,12 +326,30 @@ function registerIpc() {
   ipcMain.handle('watch:recent', async (_e, n) => watch.recent(n));
 
   ipcMain.handle('config:info', async () => ({
-    model: claude.DEFAULT_MODEL,
-    computerUseModel: agent.MODEL,
-    maxSteps: agent.MAX_STEPS,
-    hasKey: Boolean(process.env.ANTHROPIC_API_KEY),
+    ...config.snapshot(),
     canControl: executor.isAvailable(),
   }));
+
+  // --- Settings panel ---
+  ipcMain.handle('settings:get', async () => config.snapshot());
+  ipcMain.handle('settings:update', async (_e, patch) => {
+    const snap = config.update(patch || {});
+    // Apply live-tunable watch settings to the running buffer.
+    if (watch) {
+      watch.intervalMs = config.getWatchIntervalMs();
+      watch.maxFrames = config.getWatchMaxFrames();
+    }
+    return { ...snap, canControl: executor.isAvailable() };
+  });
+  // Validate a key by making a tiny real call, so users get instant feedback.
+  ipcMain.handle('settings:test-key', async () => {
+    try {
+      await claude.chat([{ role: 'user', text: 'Reply with the single word: ok' }], 'No skills.');
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: err.message };
+    }
+  });
 }
 
 function registerShortcuts() {
@@ -356,10 +375,13 @@ function registerShortcuts() {
 }
 
 app.whenReady().then(() => {
+  config.init(app.getPath('userData'));
   store = new SkillStore(path.join(app.getPath('userData'), 'skills.json'));
   workflows = new WorkflowStore(path.join(app.getPath('userData'), 'workflows.json'));
   watch = new WatchBuffer({
     capture: captureSized,
+    intervalMs: config.getWatchIntervalMs(),
+    maxFrames: config.getWatchMaxFrames(),
     onTick: (status) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('watch:event', status);

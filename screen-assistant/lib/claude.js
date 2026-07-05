@@ -17,15 +17,12 @@
  */
 
 const Anthropic = require('@anthropic-ai/sdk');
-
-const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+const config = require('./config');
 
 function getClient() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = config.getApiKey();
   if (!apiKey) {
-    throw new Error(
-      'ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add your key.'
-    );
+    throw new Error('No API key set. Open Settings (⚙) and paste your Anthropic API key.');
   }
   return new Anthropic({ apiKey });
 }
@@ -98,7 +95,7 @@ async function understandDemonstration(frames, opts = {}) {
   }
 
   const message = await client.messages.create({
-    model: DEFAULT_MODEL,
+    model: config.getModel(),
     max_tokens: 1024,
     messages: [{ role: 'user', content }],
   });
@@ -138,7 +135,7 @@ async function chat(history, skillsContext) {
   }));
 
   const message = await client.messages.create({
-    model: DEFAULT_MODEL,
+    model: config.getModel(),
     max_tokens: 1024,
     system,
     messages,
@@ -185,7 +182,7 @@ async function planExecution(skill, screenshot) {
   }
 
   const message = await client.messages.create({
-    model: DEFAULT_MODEL,
+    model: config.getModel(),
     max_tokens: 1024,
     messages: [{ role: 'user', content }],
   });
@@ -265,7 +262,7 @@ async function routeCommand(transcript, skillsContext, workflowsContext) {
     (workflowsContext || 'No workflows defined yet.');
 
   const message = await client.messages.create({
-    model: DEFAULT_MODEL,
+    model: config.getModel(),
     max_tokens: 512,
     system,
     tools,
@@ -282,4 +279,4 @@ async function routeCommand(transcript, skillsContext, workflowsContext) {
   return { action: 'reply', message: call.input.message || '' };
 }
 
-module.exports = { understandDemonstration, chat, planExecution, routeCommand, DEFAULT_MODEL };
+module.exports = { understandDemonstration, chat, planExecution, routeCommand };

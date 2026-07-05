@@ -12,7 +12,10 @@
         <span class="dot"></span>
         <h1>Screen Assistant</h1>
       </div>
-      <div class="status" id="config-status">checking…</div>
+      <div class="topbar-right">
+        <span class="status" id="config-status">checking…</span>
+        <button id="btn-settings" class="ghost gear" title="Settings">⚙</button>
+      </div>
     </header>
 
     <nav class="tabs">
@@ -174,6 +177,43 @@
           carry out the plan. You can stop it any time with the STOP button or
           <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>.
         </p>
+      </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="modal hidden">
+      <div class="modal-body">
+        <h3>Settings</h3>
+
+        <label>
+          Anthropic API key
+          <input id="set-key" type="password" placeholder="sk-ant-… (leave blank to keep current)" />
+        </label>
+        <p class="muted tiny" id="set-key-status"></p>
+
+        <label>
+          Model (teach / chat / plan / routing)
+          <input id="set-model" type="text" placeholder="claude-sonnet-5" />
+        </label>
+        <label>
+          Computer-use model (autonomous control)
+          <input id="set-cu-model" type="text" placeholder="defaults to the model above" />
+        </label>
+        <label>
+          Max steps per run
+          <input id="set-maxsteps" type="number" min="1" max="200" />
+        </label>
+        <label class="check">
+          <input id="set-paranoid" type="checkbox" />
+          Confirm before <em>every</em> action (paranoid mode)
+        </label>
+
+        <div class="modal-actions">
+          <button id="set-test" class="ghost">Test key</button>
+          <button id="set-cancel" class="ghost">Close</button>
+          <button id="set-save" class="primary">Save</button>
+        </div>
+        <p class="muted tiny" id="set-storage"></p>
       </div>
     </div>
 

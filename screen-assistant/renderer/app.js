@@ -18,22 +18,76 @@ document.querySelectorAll('.tab').forEach((tab) => {
 });
 
 /* ---------- config banner ---------- */
-(async function showConfig() {
+async function showConfig() {
   try {
     const info = await api.configInfo();
     const el = document.getElementById('config-status');
     if (!info.hasKey) {
-      el.textContent = '⚠ no ANTHROPIC_API_KEY — set it in .env';
+      el.textContent = '⚠ no API key — click ⚙ to add one';
       el.style.color = 'var(--danger)';
     } else {
-      const control = info.canControl ? '🖱 control ready' : '⚠ no OS control (see README)';
+      const control = info.canControl ? '🖱 control ready' : '⚠ no OS control';
       el.textContent = `model: ${info.model} · ${control}`;
       el.style.color = info.canControl ? '' : '#ffcc66';
     }
   } catch (e) {
     /* ignore */
   }
-})();
+}
+showConfig();
+
+/* ---------- settings panel ---------- */
+const settingsModal = document.getElementById('settings-modal');
+
+async function openSettings() {
+  const s = await api.settings.get();
+  document.getElementById('set-key').value = '';
+  document.getElementById('set-model').value = s.model || '';
+  document.getElementById('set-cu-model').value =
+    s.computerUseModel && s.computerUseModel !== s.model ? s.computerUseModel : '';
+  document.getElementById('set-maxsteps').value = s.maxSteps || 40;
+  document.getElementById('set-paranoid').checked = Boolean(s.confirmEvery);
+  const modes = {
+    encrypted: '🔒 key stored encrypted (OS keychain)',
+    plaintext: '⚠ key stored unencrypted (no OS keychain available)',
+    env: 'key loaded from environment (.env)',
+    none: 'no key set yet',
+  };
+  document.getElementById('set-storage').textContent = modes[s.keyStorageMode] || '';
+  document.getElementById('set-key-status').textContent = s.hasKey ? 'A key is currently set.' : '';
+  settingsModal.classList.remove('hidden');
+}
+
+document.getElementById('btn-settings').addEventListener('click', openSettings);
+document.getElementById('set-cancel').addEventListener('click', () => settingsModal.classList.add('hidden'));
+
+document.getElementById('set-save').addEventListener('click', async () => {
+  const patch = {
+    model: document.getElementById('set-model').value.trim(),
+    computerUseModel: document.getElementById('set-cu-model').value.trim(),
+    maxSteps: Number(document.getElementById('set-maxsteps').value) || 40,
+    confirmEvery: document.getElementById('set-paranoid').checked,
+  };
+  const key = document.getElementById('set-key').value.trim();
+  if (key) patch.apiKey = key;
+  await api.settings.update(patch);
+  settingsModal.classList.add('hidden');
+  showConfig();
+});
+
+document.getElementById('set-test').addEventListener('click', async () => {
+  const status = document.getElementById('set-key-status');
+  const key = document.getElementById('set-key').value.trim();
+  status.textContent = 'Testing…';
+  // Save the key first if the user typed a new one, so the test uses it.
+  if (key) await api.settings.update({ apiKey: key });
+  const res = await api.settings.testKey();
+  status.textContent = res.ok ? '✓ Key works.' : '✗ ' + (res.message || 'Key test failed.');
+  if (key) document.getElementById('set-storage').textContent =
+    (await api.settings.get()).keyStorageMode === 'encrypted'
+      ? '🔒 key stored encrypted (OS keychain)'
+      : '⚠ key stored unencrypted';
+});
 
 /* ---------- recording a demonstration ---------- */
 let recording = false;
