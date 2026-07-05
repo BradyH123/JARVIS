@@ -89,6 +89,64 @@ document.getElementById('set-test').addEventListener('click', async () => {
       : '⚠ key stored unencrypted';
 });
 
+/* ---------- first-run onboarding ---------- */
+const onboardModal = document.getElementById('onboard-modal');
+
+function permGuidance(info) {
+  if (info.isWayland) {
+    return '⚠ You appear to be on Wayland. Mouse/keyboard control needs an X11 session — ' +
+      'log in with "Xorg"/"X11" to enable control.';
+  }
+  if (info.platform === 'darwin') {
+    return 'macOS: System Settings → Privacy & Security → enable this app under both ' +
+      'Screen Recording and Accessibility, then re-check.';
+  }
+  if (info.platform === 'win32') return 'Windows: no extra permission needed — just re-check.';
+  return 'Linux (X11): ensure libxtst is installed, then re-check.';
+}
+
+async function refreshControl(controlEl) {
+  const info = await api.configInfo();
+  if (info.canControl) {
+    controlEl.textContent = '🖱 control ready';
+    controlEl.style.color = 'var(--ok)';
+  } else {
+    controlEl.textContent = '⚠ no control yet';
+    controlEl.style.color = '#ffcc66';
+  }
+  return info;
+}
+
+async function maybeOnboard() {
+  const info = await api.configInfo();
+  document.getElementById('ob-perms').textContent = permGuidance(info);
+  if (info.hasKey) return; // already set up
+  onboardModal.classList.remove('hidden');
+  const startBtn = document.getElementById('ob-start');
+
+  document.getElementById('ob-test').addEventListener('click', async () => {
+    const status = document.getElementById('ob-key-status');
+    const key = document.getElementById('ob-key').value.trim();
+    if (!key) return (status.textContent = 'Paste your key first.');
+    status.textContent = 'Testing…';
+    await api.settings.update({ apiKey: key });
+    startBtn.disabled = false; // key is saved; allow proceeding regardless of test flakiness
+    const res = await api.settings.testKey();
+    status.textContent = res.ok
+      ? '✓ Key works and is saved (encrypted).'
+      : '✗ ' + (res.message || 'Key test failed') + ' — key is still saved; you can continue.';
+    showConfig();
+  });
+
+  document.getElementById('ob-recheck').addEventListener('click', () =>
+    refreshControl(document.getElementById('ob-control'))
+  );
+  document.getElementById('ob-start').addEventListener('click', () => {
+    onboardModal.classList.add('hidden');
+  });
+}
+maybeOnboard();
+
 /* ---------- recording a demonstration ---------- */
 let recording = false;
 let frames = [];

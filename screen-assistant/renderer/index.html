@@ -180,6 +180,40 @@
       </div>
     </div>
 
+    <!-- ONBOARDING (first run) -->
+    <div id="onboard-modal" class="modal hidden">
+      <div class="modal-body">
+        <h3>Welcome to Screen Assistant 👁</h3>
+        <p class="muted">
+          A desktop assistant that learns tasks by watching you, then does them itself — by voice or
+          text. It can control your mouse and keyboard, so it always asks before anything risky, and
+          you can stop it instantly with <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>.
+        </p>
+
+        <h4>1 · Add your Anthropic API key</h4>
+        <p class="muted tiny">Get one at console.anthropic.com. Stored encrypted on this device.</p>
+        <div class="chat-input">
+          <input id="ob-key" type="password" placeholder="sk-ant-…" />
+          <button id="ob-test" class="ghost">Test</button>
+        </div>
+        <p class="muted tiny" id="ob-key-status"></p>
+
+        <h4>2 · Grant OS permissions</h4>
+        <p class="muted tiny" id="ob-perms">
+          Screen Recording (to watch) and Accessibility (to control). Grant them when your OS prompts,
+          then re-check below.
+        </p>
+        <div class="chat-input">
+          <button id="ob-recheck" class="ghost">Re-check control</button>
+          <span id="ob-control" class="muted"></span>
+        </div>
+
+        <div class="modal-actions">
+          <button id="ob-start" class="primary" disabled>Start using Screen Assistant</button>
+        </div>
+      </div>
+    </div>
+
     <!-- SETTINGS MODAL -->
     <div id="settings-modal" class="modal hidden">
       <div class="modal-body">

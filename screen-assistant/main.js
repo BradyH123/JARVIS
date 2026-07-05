@@ -328,6 +328,10 @@ function registerIpc() {
   ipcMain.handle('config:info', async () => ({
     ...config.snapshot(),
     canControl: executor.isAvailable(),
+    platform: process.platform,
+    isWayland:
+      process.platform === 'linux' &&
+      (process.env.XDG_SESSION_TYPE === 'wayland' || Boolean(process.env.WAYLAND_DISPLAY)),
   }));
 
   // --- Settings panel ---

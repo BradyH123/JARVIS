@@ -157,8 +157,15 @@ async function runSession(opts) {
         messages,
       });
     } catch (err) {
-      onEvent({ type: 'error', message: err.message });
-      return { status: 'error', steps: step, message: err.message };
+      let message = err.message || String(err);
+      // Turn an opaque tool/model rejection into an actionable hint.
+      if (/tool|beta|model|not.*support|400|invalid/i.test(message)) {
+        message +=
+          `  (Computer-use may not be enabled for model "${MODEL}" with tool ` +
+          `"${TOOL_TYPE}" / beta "${BETA_FLAG}". Set a supported model in Settings.)`;
+      }
+      onEvent({ type: 'error', message });
+      return { status: 'error', steps: step, message };
     }
 
     messages.push({ role: 'assistant', content: response.content });
