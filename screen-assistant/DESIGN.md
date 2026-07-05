@@ -121,10 +121,13 @@ recording. That's what lets it be re-applied when the screen differs.
 - Speech capture via the browser SpeechRecognition API with a typed fallback;
   the STT backend is swappable.
 
-### Phase 3 — Skills that compose into plans
-- Let the assistant chain skills for "large-scale plans/strategies": a planner
-  decomposes a goal into a DAG of known skills + gaps, and asks to learn the gaps.
-- Add a workflow/plan store on top of the skill store.
+### Phase 3 — Skills that compose into plans ✅ (this repo)
+- Workflows (`lib/workflows.js`): named, ordered compositions of skills + one-off
+  goals, runnable by button or by voice/NL via the intent router (`run_workflow`).
+- Each step runs through the same gated `runSingleSession`; a step ending in
+  anything but `done` halts the workflow (no blind continuation).
+- **Next:** a planner that auto-decomposes a fresh goal into known skills + gaps
+  and offers to learn the gaps (a DAG rather than a linear list).
 
 ### Phase 4 — Robustness & memory
 - Element-level grounding (accessibility tree, not just pixels) for reliability.

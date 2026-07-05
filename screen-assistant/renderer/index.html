@@ -19,6 +19,7 @@
       <button class="tab active" data-tab="record">Teach</button>
       <button class="tab" data-tab="watch">Watch</button>
       <button class="tab" data-tab="skills">Skills</button>
+      <button class="tab" data-tab="workflows">Workflows</button>
       <button class="tab" data-tab="assistant">Assistant</button>
     </nav>
 
@@ -95,6 +96,45 @@
           <h2>Skill library</h2>
           <p class="muted">Everything the assistant has learned. Click a skill to expand.</p>
           <div id="skills-list" class="skills-list"></div>
+        </div>
+      </section>
+
+      <!-- WORKFLOWS (Phase 3: compose skills into named plans) -->
+      <section class="panel" id="tab-workflows">
+        <div class="card">
+          <h2>Workflows <span class="muted">— chain skills into a named plan</span></h2>
+          <p class="muted">
+            Compose taught skills and one-off goals into an ordered routine you can run (or say)
+            with one phrase. Each step runs through the same approval-gated engine.
+          </p>
+
+          <div class="wf-builder">
+            <label>
+              Workflow name
+              <input id="wf-name" type="text" placeholder="e.g. Monday morning startup" />
+            </label>
+            <label>
+              Description (optional)
+              <input id="wf-desc" type="text" placeholder="What this routine accomplishes" />
+            </label>
+
+            <div class="wf-add-row">
+              <select id="wf-skill-select"><option value="">— pick a taught skill —</option></select>
+              <button id="wf-add-skill">+ Add skill step</button>
+            </div>
+            <div class="wf-add-row">
+              <input id="wf-goal-input" type="text" placeholder="…or type a one-off goal step" />
+              <button id="wf-add-goal">+ Add goal step</button>
+            </div>
+
+            <ol id="wf-steps" class="wf-steps"></ol>
+            <button id="wf-save" class="primary">Save workflow</button>
+            <span id="wf-save-status" class="muted"></span>
+          </div>
+
+          <hr class="wf-sep" />
+          <h3>Saved workflows</h3>
+          <div id="wf-list" class="skills-list"></div>
         </div>
       </section>
 

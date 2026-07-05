@@ -29,6 +29,15 @@ contextBridge.exposeInMainWorld('assistant', {
   confirm: (payload) => ipcRenderer.invoke('assistant:confirm', payload),
   onAgentEvent: (cb) => ipcRenderer.on('agent:event', (_e, evt) => cb(evt)),
 
+  // Phase 3: workflows (compositions of skills/goals).
+  workflows: {
+    list: () => ipcRenderer.invoke('workflows:list'),
+    get: (id) => ipcRenderer.invoke('workflows:get', id),
+    save: (payload) => ipcRenderer.invoke('workflows:save', payload),
+    remove: (id) => ipcRenderer.invoke('workflows:delete', id),
+    run: (id) => ipcRenderer.invoke('workflows:run', id),
+  },
+
   // Phase 2: continuous private capture.
   watch: {
     start: () => ipcRenderer.invoke('watch:start'),

@@ -124,6 +124,17 @@ input[type='text'], textarea {
 .mic { min-width: 44px; }
 .mic.listening { background: var(--danger); border-color: var(--danger); color: #fff; }
 
+/* workflows */
+.wf-builder { margin-top: 12px; }
+.wf-add-row { display: flex; gap: 8px; margin: 8px 0; }
+.wf-add-row select, .wf-add-row input { flex: 1; }
+.wf-steps { margin: 12px 0; padding-left: 20px; }
+.wf-steps li { margin: 4px 0; display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.wf-steps .wf-step-label { flex: 1; }
+.wf-steps .wf-kind { color: var(--muted); font-size: 12px; }
+.wf-sep { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+.run-line.step { color: #a9c7ff; font-weight: 600; }
+
 .modal {
   position: fixed; inset: 0; background: rgba(0,0,0,0.6);
   display: flex; align-items: center; justify-content: center; z-index: 50;

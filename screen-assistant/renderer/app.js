@@ -13,6 +13,7 @@ document.querySelectorAll('.tab').forEach((tab) => {
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
     if (tab.dataset.tab === 'skills') loadSkills();
     if (tab.dataset.tab === 'watch') api.watch.status().then(renderWatchStatus);
+    if (tab.dataset.tab === 'workflows') loadWorkflows();
   });
 });
 
@@ -282,6 +283,12 @@ api.onAgentEvent((evt) => {
     case 'action':
       logRun('action', '➤ ' + (evt.detail || evt.action));
       break;
+    case 'step-started':
+      logRun('step', `▸ Step ${evt.index + 1}/${evt.total}: ${evt.label}`);
+      break;
+    case 'step-finished':
+      logRun(evt.status === 'done' ? 'info' : 'warn', `  step ${evt.index + 1} → ${evt.status}`);
+      break;
     case 'permission':
       logRun('perm', `⏸ needs approval (${evt.risk || 'medium'}): ${evt.summary || ''}`);
       break;
@@ -311,13 +318,22 @@ api.onAgentEvent((evt) => {
       logRun('error', evt.message || 'Error');
       break;
     case 'done':
-    case 'finished':
-      if (evt.type === 'done' || (evt.status && evt.status === 'done')) {
+      runStatus.textContent = '✓ done';
+      runStatus.className = 'run-status done';
+      if (evt.message) logRun('info', '✓ ' + evt.message);
+      break;
+    case 'finished': {
+      const s = evt.status || 'done';
+      if (s === 'done') {
         runStatus.textContent = '✓ done';
         runStatus.className = 'run-status done';
-        if (evt.message) logRun('info', '✓ ' + evt.message);
+      } else {
+        runStatus.textContent = '■ ' + s;
+        runStatus.className = 'run-status stopped';
       }
+      if (evt.message) logRun(s === 'done' ? 'info' : 'warn', evt.message);
       break;
+    }
     default:
       break;
   }
@@ -389,6 +405,9 @@ async function runCommand(text) {
     if (routed.action === 'skill') {
       addMessage('assistant', `Running skill: ${routed.skill_name || routed.skill_id}`);
       startRun({ skillId: routed.skill_id, goal: routed.skill_name });
+    } else if (routed.action === 'workflow') {
+      addMessage('assistant', `Running workflow: ${routed.workflow_name || routed.workflow_id}`);
+      startWorkflowRun(routed.workflow_id, routed.workflow_name);
     } else if (routed.action === 'goal') {
       addMessage('assistant', `On it — working toward: ${routed.goal}`);
       startRun({ goal: routed.goal });
@@ -481,6 +500,128 @@ document.getElementById('watch-teach-btn').addEventListener('click', async () =>
   recordMeta.textContent = `${recent.length} frame(s) pulled from watch buffer — name it below`;
   document.querySelector('.tab[data-tab="record"]').click();
 });
+
+/* ---------- workflows (Phase 3) ---------- */
+let wfSteps = []; // builder state: [{type:'skill', skill_id, label} | {type:'goal', goal, label}]
+
+async function loadWorkflows() {
+  // Populate the skill picker.
+  const select = document.getElementById('wf-skill-select');
+  const skills = await api.skills.list();
+  select.innerHTML = '<option value="">— pick a taught skill —</option>';
+  skills.forEach((s) => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.name;
+    select.appendChild(opt);
+  });
+  // Render saved workflows.
+  const list = document.getElementById('wf-list');
+  const wfs = await api.workflows.list();
+  if (!wfs.length) {
+    list.innerHTML = '<p class="muted">No workflows yet. Build one above.</p>';
+    return;
+  }
+  list.innerHTML = '';
+  wfs.forEach((w) => list.appendChild(renderWorkflow(w)));
+}
+
+function renderWorkflowSteps() {
+  const ol = document.getElementById('wf-steps');
+  ol.innerHTML = '';
+  wfSteps.forEach((step, i) => {
+    const li = document.createElement('li');
+    li.innerHTML =
+      `<span class="wf-step-label"><span class="wf-kind">[${step.type}]</span> ${escapeHtml(step.label)}</span>`;
+    const rm = document.createElement('button');
+    rm.className = 'danger';
+    rm.textContent = '✕';
+    rm.addEventListener('click', () => {
+      wfSteps.splice(i, 1);
+      renderWorkflowSteps();
+    });
+    li.appendChild(rm);
+    ol.appendChild(li);
+  });
+}
+
+document.getElementById('wf-add-skill').addEventListener('click', () => {
+  const select = document.getElementById('wf-skill-select');
+  if (!select.value) return;
+  wfSteps.push({ type: 'skill', skill_id: select.value, label: select.options[select.selectedIndex].text });
+  renderWorkflowSteps();
+});
+document.getElementById('wf-add-goal').addEventListener('click', () => {
+  const input = document.getElementById('wf-goal-input');
+  const goal = input.value.trim();
+  if (!goal) return;
+  wfSteps.push({ type: 'goal', goal, label: goal });
+  input.value = '';
+  renderWorkflowSteps();
+});
+document.getElementById('wf-save').addEventListener('click', async () => {
+  const name = document.getElementById('wf-name').value.trim();
+  const status = document.getElementById('wf-save-status');
+  if (!name) return (status.textContent = 'Give the workflow a name.');
+  if (!wfSteps.length) return (status.textContent = 'Add at least one step.');
+  const steps = wfSteps.map((s) => (s.type === 'skill' ? { type: 'skill', skill_id: s.skill_id } : { type: 'goal', goal: s.goal }));
+  await api.workflows.save({
+    name,
+    description: document.getElementById('wf-desc').value.trim(),
+    trigger_phrases: [name.toLowerCase()],
+    steps,
+  });
+  status.textContent = '✓ Saved.';
+  document.getElementById('wf-name').value = '';
+  document.getElementById('wf-desc').value = '';
+  wfSteps = [];
+  renderWorkflowSteps();
+  loadWorkflows();
+});
+
+function renderWorkflow(w) {
+  const el = document.createElement('div');
+  el.className = 'skill';
+  const steps = (w.steps || [])
+    .map((s) => `<li>${s.type === 'skill' ? '[skill] ' + escapeHtml(s.skill_id) : '[goal] ' + escapeHtml(s.goal || '')}</li>`)
+    .join('');
+  el.innerHTML = `
+    <div class="skill-head">
+      <span class="name">${escapeHtml(w.name)}</span>
+      <span class="muted">${(w.steps || []).length} step(s)</span>
+    </div>
+    <div class="skill-body">
+      <p>${escapeHtml(w.description || '')}</p>
+      <ol>${steps}</ol>
+      <div class="skill-actions">
+        <button class="run">Run workflow</button>
+        <button class="danger del">Delete</button>
+      </div>
+    </div>`;
+  el.querySelector('.skill-head').addEventListener('click', () => el.classList.toggle('open'));
+  el.querySelector('.run').addEventListener('click', () => startWorkflowRun(w.id, w.name));
+  el.querySelector('.del').addEventListener('click', async () => {
+    await api.workflows.remove(w.id);
+    loadWorkflows();
+  });
+  return el;
+}
+
+async function startWorkflowRun(workflowId, name) {
+  runOverlay.classList.remove('hidden');
+  runLog.innerHTML = '';
+  runStatus.textContent = '● running';
+  runStatus.className = 'run-status running';
+  runGoal.textContent = 'Workflow: ' + (name || '');
+  logRun('info', 'Starting workflow — the assistant now controls your mouse & keyboard.');
+  try {
+    const res = await api.workflows.run(workflowId);
+    if (res && res.status === 'busy') logRun('warn', 'A run is already in progress.');
+    if (res && res.status === 'error') logRun('error', res.message || 'Error');
+  } catch (e) {
+    logRun('error', e.message);
+  }
+}
 
 /* ---------- util ---------- */
 function escapeHtml(s) {

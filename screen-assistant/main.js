@@ -27,6 +27,7 @@ const {
 } = require('electron');
 
 const { SkillStore } = require('./lib/skills');
+const { WorkflowStore } = require('./lib/workflows');
 const claude = require('./lib/claude');
 const agent = require('./lib/agent');
 const executor = require('./lib/executor');
@@ -34,6 +35,7 @@ const { WatchBuffer } = require('./lib/monitor');
 
 let mainWindow = null;
 let store = null;
+let workflows = null; // Phase 3 workflow store
 let watch = null; // Phase 2 always-on capture buffer
 let sessionAbort = false; // kill switch for the autonomous loop
 let sessionRunning = false;
@@ -42,6 +44,33 @@ const pendingConfirms = new Map(); // id -> resolve(boolean) for permission gate
 function resolveAllConfirms(value) {
   for (const resolve of pendingConfirms.values()) resolve(value);
   pendingConfirms.clear();
+}
+
+/**
+ * Run one autonomous session (a single skill or goal). Shared by the single-run
+ * IPC and the workflow runner so every entry point goes through the same gated
+ * path. Does NOT own sessionRunning/sessionAbort — the caller sets those so a
+ * workflow can span multiple sessions under one lifecycle.
+ */
+async function runSingleSession(skill, goal, send) {
+  const objective = goal || (skill ? skill.name : null);
+  if (!objective) return { status: 'error', message: 'No goal or skill provided.' };
+  return agent.runSession({
+    goal: objective,
+    skill,
+    capture: captureSized,
+    execute: executor.perform,
+    onEvent: send,
+    shouldAbort: () => sessionAbort,
+    // Fails safe: a stopped run or closed window resolves pending prompts denied.
+    confirm: ({ summary, risk }) =>
+      new Promise((resolve) => {
+        if (sessionAbort) return resolve(false);
+        const id = crypto.randomUUID();
+        pendingConfirms.set(id, resolve);
+        send({ type: 'confirm-request', id, summary, risk });
+      }),
+  });
 }
 
 function nowIso() {
@@ -130,17 +159,46 @@ function registerIpc() {
     return claude.chat(history || [], store.contextForPrompt());
   });
 
-  // Voice/NL command → intent routing (run a skill, run a goal, or reply).
+  // Voice/NL command → intent routing (skill, workflow, goal, or reply).
   ipcMain.handle('assistant:command', async (_e, transcript) => {
-    const routed = await claude.routeCommand(String(transcript || ''), store.contextForPrompt());
+    const routed = await claude.routeCommand(
+      String(transcript || ''),
+      store.contextForPrompt(),
+      workflows.contextForPrompt(store)
+    );
     if (routed.action === 'skill') {
       const skill = store.get(routed.skill_id);
       routed.skill_name = skill ? skill.name : null;
-      if (!skill) routed.action = 'reply'; // stale id → don't run
-      if (!skill) routed.message = "I couldn't find that skill anymore.";
+      if (!skill) {
+        routed.action = 'reply';
+        routed.message = "I couldn't find that skill anymore.";
+      }
+    } else if (routed.action === 'workflow') {
+      const wf = workflows.get(routed.workflow_id);
+      routed.workflow_name = wf ? wf.name : null;
+      if (!wf) {
+        routed.action = 'reply';
+        routed.message = "I couldn't find that workflow anymore.";
+      }
     }
     return routed;
   });
+
+  // --- Phase 3: workflow library CRUD ---
+  ipcMain.handle('workflows:list', async () => workflows.list());
+  ipcMain.handle('workflows:get', async (_e, id) => workflows.get(id));
+  ipcMain.handle('workflows:save', async (_e, payload) => {
+    const wf = {
+      id: crypto.randomUUID(),
+      name: (payload && payload.name) || 'Untitled workflow',
+      description: (payload && payload.description) || '',
+      trigger_phrases: (payload && payload.trigger_phrases) || [],
+      steps: (payload && payload.steps) || [],
+      created_at: nowIso(),
+    };
+    return workflows.add(wf);
+  });
+  ipcMain.handle('workflows:delete', async (_e, id) => workflows.remove(id));
 
   // Build (but do not run) an execution plan for a skill against the live screen.
   ipcMain.handle('assistant:plan', async (_e, skillId) => {
@@ -183,25 +241,57 @@ function registerIpc() {
     sessionRunning = true;
     send({ type: 'started', goal: objective });
     try {
-      const result = await agent.runSession({
-        goal: objective,
-        skill,
-        capture: captureSized,
-        execute: executor.perform,
-        onEvent: send,
-        shouldAbort: () => sessionAbort,
-        // Human confirmation gate for risky actions. Fails safe: a stopped run
-        // or a closed window resolves pending prompts as denied.
-        confirm: ({ summary, risk }) =>
-          new Promise((resolve) => {
-            if (sessionAbort) return resolve(false);
-            const id = crypto.randomUUID();
-            pendingConfirms.set(id, resolve);
-            send({ type: 'confirm-request', id, summary, risk });
-          }),
-      });
+      const result = await runSingleSession(skill, goal, send);
       send({ type: 'finished', ...result });
       return result;
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    } finally {
+      sessionRunning = false;
+    }
+  });
+
+  // Run a saved workflow: each step is a gated autonomous session; halt if a
+  // step ends anything other than 'done' (abort/error/step-cap).
+  ipcMain.handle('workflows:run', async (e, workflowId) => {
+    if (sessionRunning) return { status: 'busy' };
+    if (!executor.isAvailable()) {
+      return { status: 'error', message: 'Native input module not available. See README.' };
+    }
+    const wf = workflows.get(workflowId);
+    if (!wf) return { status: 'error', message: 'Workflow not found.' };
+
+    const { runnable, missing } = workflows.resolveSteps(workflowId, store);
+    const send = (evt) => {
+      if (!e.sender.isDestroyed()) e.sender.send('agent:event', evt);
+    };
+
+    sessionAbort = false;
+    sessionRunning = true;
+    send({ type: 'started', goal: `Workflow: ${wf.name}`, workflow: true });
+    if (missing.length) {
+      send({ type: 'thinking', text: `${missing.length} step(s) reference missing skills and were skipped.` });
+    }
+
+    let last = { status: 'done' };
+    try {
+      for (let i = 0; i < runnable.length; i++) {
+        if (sessionAbort) {
+          last = { status: 'aborted' };
+          break;
+        }
+        const step = runnable[i];
+        send({ type: 'step-started', index: i, total: runnable.length, label: step.label });
+        last = await runSingleSession(step.skill, step.goal, send);
+        send({ type: 'step-finished', index: i, status: last.status, label: step.label });
+        if (last.status !== 'done') {
+          send({ type: 'thinking', text: `Halting workflow: step ${i + 1} ended '${last.status}'.` });
+          break;
+        }
+      }
+      send({ type: 'finished', ...last, workflow: true });
+      return last;
     } catch (err) {
       send({ type: 'error', message: err.message });
       return { status: 'error', message: err.message };
@@ -267,6 +357,7 @@ function registerShortcuts() {
 
 app.whenReady().then(() => {
   store = new SkillStore(path.join(app.getPath('userData'), 'skills.json'));
+  workflows = new WorkflowStore(path.join(app.getPath('userData'), 'workflows.json'));
   watch = new WatchBuffer({
     capture: captureSized,
     onTick: (status) => {
