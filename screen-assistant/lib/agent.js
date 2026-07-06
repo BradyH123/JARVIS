@@ -21,6 +21,7 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('./config');
+const { pruneOldImages } = require('./history');
 
 // Heuristic backstop: clearly destructive/quit shortcuts force a confirmation
 // even if the model forgot to ask. Kept small to avoid nagging.
@@ -94,6 +95,7 @@ async function runSession(opts) {
   const MAX_STEPS = config.getMaxSteps();
   const TARGET_WIDTH = config.getTargetWidth();
   const CONFIRM_EVERY = config.getConfirmEvery();
+  const KEEP_RECENT_IMAGES = config.getKeepImages();
 
   // First screenshot establishes the coordinate scale.
   const first = await capture();
@@ -151,7 +153,9 @@ async function runSession(opts) {
       response = await client.beta.messages.create({
         model: MODEL,
         max_tokens: 1400,
-        system,
+        // Cache the stable system+tools prefix so it isn't re-billed as fresh
+        // input on every turn of a long run.
+        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
         tools,
         betas: [BETA_FLAG],
         messages,
@@ -269,6 +273,10 @@ async function runSession(opts) {
     }
 
     messages.push({ role: 'user', content: toolResults });
+    // Cost control: the model only needs the most recent few screenshots to
+    // ground its next action. Older ones are replaced with a tiny placeholder,
+    // which keeps token usage roughly flat instead of growing every step.
+    pruneOldImages(messages, KEEP_RECENT_IMAGES);
   }
 
   onEvent({ type: 'max_steps', steps: MAX_STEPS });

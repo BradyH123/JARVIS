@@ -101,14 +101,15 @@ function createWindow() {
 }
 
 /**
- * Capture a single screenshot of the primary display and return it as a PNG
- * data URL. Thumbnail size is capped so frames stay small enough to store and
- * to send to the model.
+ * Capture a single screenshot of the primary display and return it as a JPEG
+ * data URL. JPEG is ~5-10x smaller than PNG for screen content, which cuts both
+ * the model token bill and IPC/storage overhead with no meaningful accuracy
+ * loss for UI grounding. Thumbnail size is capped to the model's target width.
  */
 async function captureSized() {
   const primary = screen.getPrimaryDisplay();
   const { width, height } = primary.size;
-  const scale = Math.min(1, 1280 / width);
+  const scale = Math.min(1, config.getTargetWidth() / width);
 
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
@@ -123,11 +124,22 @@ async function captureSized() {
   const source =
     sources.find((s) => String(s.display_id) === String(primary.id)) || sources[0];
   const size = source.thumbnail.getSize();
-  return { dataUrl: source.thumbnail.toDataURL(), width: size.width, height: size.height };
+  const jpeg = source.thumbnail.toJPEG(72); // 72% quality: small, still legible
+  const dataUrl = 'data:image/jpeg;base64,' + jpeg.toString('base64');
+  return { dataUrl, width: size.width, height: size.height };
 }
 
 async function captureFrame() {
   return (await captureSized()).dataUrl;
+}
+
+/** Evenly sample at most `max` items from an array (keeps first and last). */
+function sampleFrames(frames, max) {
+  if (frames.length <= max) return frames;
+  const step = (frames.length - 1) / (max - 1);
+  const out = [];
+  for (let i = 0; i < max; i++) out.push(frames[Math.round(i * step)]);
+  return out;
 }
 
 function registerIpc() {
@@ -144,12 +156,16 @@ function registerIpc() {
   // Save a demonstration: ask Claude to generalize it, then persist.
   ipcMain.handle('skills:save', async (_e, payload) => {
     const { name, note, frames } = payload || {};
-    const learned = await claude.understandDemonstration(frames || [], { name, note });
+    const allFrames = frames || [];
+    const learned = await claude.understandDemonstration(allFrames, { name, note });
+    // Keep only a representative sample on disk (evenly spaced) so skills.json
+    // doesn't balloon — the generalized steps, not the pixels, are the value.
+    const kept = sampleFrames(allFrames, 8);
     const skill = {
       id: crypto.randomUUID(),
       name: name || 'Untitled action',
       note: note || '',
-      frames: frames || [],
+      frames: kept,
       created_at: nowIso(),
       ...learned,
     };

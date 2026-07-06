@@ -111,6 +111,8 @@ const getConfirmEvery = () => {
 };
 const getWatchIntervalMs = () => Number(value('watchIntervalMs', 'SA_WATCH_INTERVAL_MS', 3000));
 const getWatchMaxFrames = () => Number(value('watchMaxFrames', 'SA_WATCH_MAX_FRAMES', 40));
+// How many recent screenshots to keep in the model's context each turn.
+const getKeepImages = () => Math.max(1, Number(value('keepImages', 'SA_KEEP_IMAGES', 3)));
 
 /** Everything the Settings UI needs (never includes the key itself). */
 function snapshot() {
@@ -159,4 +161,5 @@ module.exports = {
   getConfirmEvery,
   getWatchIntervalMs,
   getWatchMaxFrames,
+  getKeepImages,
 };

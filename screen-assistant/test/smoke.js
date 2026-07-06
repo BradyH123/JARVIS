@@ -100,6 +100,27 @@ await test('WatchBuffer respects maxFrames and recent()', async () => {
   assert.strictEqual(wb.status().count, 0, 'buffer dropped on stop (privacy)');
 });
 
+  // --- history image pruning (cost optimization) ---
+  const { pruneOldImages } = require('../lib/history');
+  await test('pruneOldImages keeps only the newest N screenshots', () => {
+    const img = () => ({ type: 'image', source: {} });
+    const messages = [
+      { role: 'user', content: [{ type: 'text', text: 'go' }, img()] },
+      { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: '1', content: [img()] }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: '2', content: [img()] }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: '3', content: [img()] }] },
+    ];
+    const pruned = pruneOldImages(messages, 2);
+    assert.strictEqual(pruned, 2, '4 images total, keep 2, prune 2');
+    // newest two images survive
+    assert.strictEqual(messages[4].content[0].content[0].type, 'image');
+    assert.strictEqual(messages[3].content[0].content[0].type, 'image');
+    // older ones become text stubs
+    assert.strictEqual(messages[2].content[0].content[0].type, 'text');
+    assert.strictEqual(messages[0].content[1].type, 'text');
+  });
+
   console.log(`\n${passed} test(s) passed.`);
 }
 
