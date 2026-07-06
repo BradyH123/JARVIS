@@ -147,6 +147,14 @@ async function maybeOnboard() {
 }
 maybeOnboard();
 
+// The widget can open the dashboard focused on a specific tab.
+if (api.onFocusTab) {
+  api.onFocusTab((tab) => {
+    const btn = document.querySelector(`.tab[data-tab="${tab}"]`);
+    if (btn) btn.click();
+  });
+}
+
 /* ---------- recording a demonstration ---------- */
 let recording = false;
 let frames = [];

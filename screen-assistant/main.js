@@ -35,6 +35,7 @@ const executor = require('./lib/executor');
 const { WatchBuffer } = require('./lib/monitor');
 
 let mainWindow = null;
+let widgetWindow = null; // always-on-top JARVIS widget
 let store = null;
 let workflows = null; // Phase 3 workflow store
 let watch = null; // Phase 2 always-on capture buffer
@@ -78,7 +79,19 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function createWindow() {
+/** Send an event to every open window so the widget and dashboard stay in sync. */
+function broadcast(channel, payload) {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send(channel, payload);
+  }
+}
+
+// The full dashboard (tabs). Created hidden; the widget is the primary surface.
+function createWindow(show) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (show) mainWindow.show();
+    return mainWindow;
+  }
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 760,
@@ -86,6 +99,7 @@ function createWindow() {
     minHeight: 560,
     title: 'Screen Assistant',
     backgroundColor: '#0f1115',
+    show: Boolean(show),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -98,6 +112,34 @@ function createWindow() {
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
+  return mainWindow;
+}
+
+// The always-on-top JARVIS widget: frameless, transparent, floats over work.
+function createWidget() {
+  const wa = screen.getPrimaryDisplay().workArea;
+  widgetWindow = new BrowserWindow({
+    width: 360,
+    height: 520,
+    x: wa.x + wa.width - 384,
+    y: wa.y + wa.height - 552,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    hasShadow: false,
+    fullscreenable: false,
+    title: 'Assistant',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  widgetWindow.setAlwaysOnTop(true, 'floating');
+  widgetWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  widgetWindow.loadFile(path.join(__dirname, 'renderer', 'widget.html'));
 }
 
 /**
@@ -250,9 +292,7 @@ function registerIpc() {
     const objective = goal || (skill ? skill.name : null);
     if (!objective) return { status: 'error', message: 'No goal or skill provided.' };
 
-    const send = (evt) => {
-      if (!e.sender.isDestroyed()) e.sender.send('agent:event', evt);
-    };
+    const send = (evt) => broadcast('agent:event', evt);
 
     sessionAbort = false;
     sessionRunning = true;
@@ -280,9 +320,7 @@ function registerIpc() {
     if (!wf) return { status: 'error', message: 'Workflow not found.' };
 
     const { runnable, missing } = workflows.resolveSteps(workflowId, store);
-    const send = (evt) => {
-      if (!e.sender.isDestroyed()) e.sender.send('agent:event', evt);
-    };
+    const send = (evt) => broadcast('agent:event', evt);
 
     sessionAbort = false;
     sessionRunning = true;
@@ -370,16 +408,36 @@ function registerIpc() {
       return { ok: false, message: err.message };
     }
   });
+
+  // --- Window controls (widget ↔ dashboard) ---
+  ipcMain.handle('window:open-dashboard', async (_e, tab) => {
+    const win = createWindow(true);
+    win.show();
+    win.focus();
+    if (tab) win.webContents.send('dashboard:focus-tab', tab);
+    return { ok: true };
+  });
+  ipcMain.handle('widget:hide', async () => {
+    if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.hide();
+    return { ok: true };
+  });
+  ipcMain.handle('widget:quit', async () => {
+    app.quit();
+    return { ok: true };
+  });
+  // Live counts for the widget's "all my work" summary.
+  ipcMain.handle('summary:counts', async () => ({
+    skills: store.list().length,
+    workflows: workflows.list().length,
+    running: sessionRunning,
+    watching: watch ? watch.status().active : false,
+  }));
 }
 
 function registerShortcuts() {
   // Toggle the demonstration recorder from anywhere.
   const ok = globalShortcut.register('CommandOrControl+Shift+R', () => {
-    if (mainWindow) {
-      mainWindow.webContents.send('shortcut:toggle-record');
-      if (!mainWindow.isVisible()) mainWindow.show();
-      mainWindow.focus();
-    }
+    broadcast('shortcut:toggle-record');
   });
   if (!ok) console.warn('Could not register global shortcut Ctrl/Cmd+Shift+R');
 
@@ -387,11 +445,18 @@ function registerShortcuts() {
   const stopOk = globalShortcut.register('CommandOrControl+Shift+X', () => {
     sessionAbort = true;
     resolveAllConfirms(false);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('agent:event', { type: 'abort-requested' });
-    }
+    broadcast('agent:event', { type: 'abort-requested' });
   });
   if (!stopOk) console.warn('Could not register emergency-stop shortcut Ctrl/Cmd+Shift+X');
+
+  // Summon the widget (and jump straight into voice) from anywhere.
+  const summonOk = globalShortcut.register('CommandOrControl+Shift+Space', () => {
+    if (!widgetWindow || widgetWindow.isDestroyed()) createWidget();
+    else widgetWindow.show();
+    widgetWindow.focus();
+    broadcast('widget:summon');
+  });
+  if (!summonOk) console.warn('Could not register summon shortcut Ctrl/Cmd+Shift+Space');
 }
 
 app.whenReady().then(() => {
@@ -402,18 +467,16 @@ app.whenReady().then(() => {
     capture: captureSized,
     intervalMs: config.getWatchIntervalMs(),
     maxFrames: config.getWatchMaxFrames(),
-    onTick: (status) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('watch:event', status);
-      }
-    },
+    onTick: (status) => broadcast('watch:event', status),
   });
   registerIpc();
-  createWindow();
+  createWidget(); // the JARVIS widget is the primary, always-on surface
+  createWindow(false); // dashboard preloaded but hidden until summoned
   registerShortcuts();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!widgetWindow || widgetWindow.isDestroyed()) createWidget();
+    else widgetWindow.show();
   });
 });
 

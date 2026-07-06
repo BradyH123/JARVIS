@@ -15,6 +15,15 @@ instantly. See [`DESIGN.md`](./DESIGN.md) for the full architecture and roadmap.
 > (**Ctrl/Cmd+Shift+X** works even when the app isn't focused), and don't leave
 > it unattended on anything destructive or irreversible.
 
+## The interface: a floating JARVIS widget
+
+The app's primary surface is an **always-on-top, frameless widget** that floats
+over your work — an animated arc-reactor core that reflects its state (idle,
+listening, working, approval-needed), a voice/text command box, a live activity
+feed, and quick counts of your skills and workflows. The full **workspace**
+(Teach / Watch / Skills / Workflows / Assistant tabs) is one click away via the
+⤢ button, or summon the widget from anywhere with **Ctrl/Cmd+Shift+Space**.
+
 ## What works today
 
 - **Teach** a skill by demonstration: hit record, do the thing, stop, name it.

@@ -56,6 +56,14 @@ contextBridge.exposeInMainWorld('assistant', {
   },
   onWatchEvent: (cb) => ipcRenderer.on('watch:event', (_e, evt) => cb(evt)),
 
+  // Widget ↔ dashboard window controls.
+  openDashboard: (tab) => ipcRenderer.invoke('window:open-dashboard', tab),
+  hideWidget: () => ipcRenderer.invoke('widget:hide'),
+  quitApp: () => ipcRenderer.invoke('widget:quit'),
+  summaryCounts: () => ipcRenderer.invoke('summary:counts'),
+  onWidgetSummon: (cb) => ipcRenderer.on('widget:summon', cb),
+  onFocusTab: (cb) => ipcRenderer.on('dashboard:focus-tab', (_e, tab) => cb(tab)),
+
   // Global-shortcut push from main → renderer.
   onToggleRecord: (cb) => ipcRenderer.on('shortcut:toggle-record', cb),
 });

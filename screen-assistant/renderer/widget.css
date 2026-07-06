@@ -1,0 +1,200 @@
+/* JARVIS widget — a deliberate single dark-glass, neon look. Frameless window,
+   so the body is transparent and only the panel is visible over the desktop. */
+
+:root {
+  --idle: #3aa0ff;
+  --listen: #22d3ee;
+  --run: #ffb020;
+  --approve: #ff5c5c;
+  --done: #4bd18a;
+  --accent: var(--idle);
+  --panel: rgba(14, 18, 28, 0.86);
+  --panel-edge: rgba(120, 170, 255, 0.22);
+  --text: #e8edf6;
+  --muted: #8ea0bd;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  overflow: hidden;
+  user-select: none;
+}
+
+.widget {
+  width: 340px;
+  height: 500px;
+  margin: 8px auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 22px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 0 40px -12px var(--accent);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+  transition: box-shadow 0.5s ease;
+}
+
+/* draggable title bar */
+.wx-header {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+}
+.wx-title {
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.wx-winctl { -webkit-app-region: no-drag; display: flex; gap: 4px; }
+.wx-winctl button {
+  width: 26px; height: 22px;
+  background: transparent; border: none; color: var(--muted);
+  cursor: pointer; border-radius: 6px; font-size: 13px;
+}
+.wx-winctl button:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+
+/* the core / arc reactor */
+.wx-core {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 176px;
+}
+#wx-orb { width: 220px; height: 220px; }
+.wx-orb-label {
+  position: absolute;
+  font-size: 10px; letter-spacing: 3px; font-weight: 700;
+  color: var(--accent);
+  text-shadow: 0 0 12px var(--accent);
+}
+
+.wx-state {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 2px;
+  color: var(--text);
+}
+.wx-sub {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 3px 14px 8px;
+  min-height: 14px;
+}
+
+/* live activity feed */
+.wx-feed {
+  flex: 1;
+  margin: 0 12px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  overflow-y: auto;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wx-feed::-webkit-scrollbar { width: 6px; }
+.wx-feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+.wx-line.think { color: var(--muted); }
+.wx-line.action { color: #bcd6ff; }
+.wx-line.info { color: var(--done); }
+.wx-line.warn { color: var(--run); }
+.wx-line.error { color: var(--approve); }
+.wx-line.perm { color: var(--run); font-weight: 600; }
+.wx-empty { color: var(--muted); text-align: center; padding: 12px 0; font-family: inherit; }
+
+/* approval gate */
+.wx-confirm {
+  margin: 8px 12px 0;
+  padding: 10px 12px;
+  background: rgba(255, 92, 92, 0.1);
+  border: 1px solid rgba(255, 92, 92, 0.4);
+  border-radius: 12px;
+}
+.wx-confirm-msg { font-size: 12px; margin-bottom: 8px; }
+.wx-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.wx-btn { border: 1px solid var(--panel-edge); background: rgba(255,255,255,0.06); color: var(--text);
+  padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; }
+.wx-btn.danger { background: var(--approve); border-color: var(--approve); color: #fff; }
+.wx-btn.ghost:hover { background: rgba(255,255,255,0.1); }
+
+/* command input */
+.wx-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 12px 6px;
+}
+.wx-input input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 13px;
+  outline: none;
+}
+.wx-input input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(58,160,255,0.2); }
+.wx-icon {
+  width: 38px; height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text); border-radius: 10px; cursor: pointer; font-size: 15px;
+}
+.wx-icon.send { background: var(--accent); border-color: var(--accent); color: #06101f; font-weight: 700; }
+.wx-icon:hover { filter: brightness(1.15); }
+#wx-mic.listening { background: var(--listen); border-color: var(--listen); color: #06101f; }
+
+/* footer chips + stop */
+.wx-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 12px;
+}
+.wx-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.wx-chip:hover { color: var(--text); border-color: var(--panel-edge); }
+.wx-stop {
+  margin-left: auto;
+  background: var(--approve);
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hidden { display: none !important; }
+
+/* state accents drive the whole panel glow */
+.widget[data-state='listening'] { --accent: var(--listen); }
+.widget[data-state='running'] { --accent: var(--run); }
+.widget[data-state='approval'] { --accent: var(--approve); }
+.widget[data-state='done'] { --accent: var(--done); }

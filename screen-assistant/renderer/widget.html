@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Assistant</title>
+    <link rel="stylesheet" href="widget.css" />
+  </head>
+  <body>
+    <div id="widget" class="widget" data-state="idle">
+      <div class="wx-header">
+        <span class="wx-title">ASSISTANT</span>
+        <div class="wx-winctl">
+          <button id="wx-dash" title="Open workspace">⤢</button>
+          <button id="wx-hide" title="Hide (Ctrl/Cmd+Shift+Space to summon)">—</button>
+          <button id="wx-quit" title="Quit">✕</button>
+        </div>
+      </div>
+
+      <div class="wx-core">
+        <canvas id="wx-orb" width="240" height="240"></canvas>
+        <div class="wx-orb-label" id="wx-orb-label">READY</div>
+      </div>
+
+      <div class="wx-state" id="wx-state">Standing by</div>
+      <div class="wx-sub" id="wx-sub">Say a command or type below</div>
+
+      <div id="wx-feed" class="wx-feed"></div>
+
+      <div id="wx-confirm" class="wx-confirm hidden">
+        <div id="wx-confirm-msg" class="wx-confirm-msg"></div>
+        <div class="wx-confirm-actions">
+          <button id="wx-deny" class="wx-btn ghost">Deny</button>
+          <button id="wx-approve" class="wx-btn danger">Approve</button>
+        </div>
+      </div>
+
+      <div class="wx-input">
+        <button id="wx-mic" class="wx-icon" title="Voice command">🎙</button>
+        <input id="wx-cmd" type="text" placeholder="Ask or command…" autocomplete="off" />
+        <button id="wx-send" class="wx-icon send" title="Send">➤</button>
+      </div>
+
+      <div class="wx-foot">
+        <button class="wx-chip" id="wx-open-skills">◇ <span id="wx-skills-n">—</span> skills</button>
+        <button class="wx-chip" id="wx-open-wf">⛓ <span id="wx-wf-n">—</span> flows</button>
+        <button id="wx-stop" class="wx-stop hidden">■ STOP</button>
+      </div>
+    </div>
+
+    <script src="widget.js"></script>
+  </body>
+</html>
