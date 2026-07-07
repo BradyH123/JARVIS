@@ -101,11 +101,21 @@ On first launch you'll need to grant OS permissions:
 If the top bar shows `⚠ no OS control`, the native input module didn't load —
 re-run `npm install` and check the permissions above.
 
-For **voice control**, the app uses the browser SpeechRecognition API. If your
-Electron build lacks a speech backend the mic is disabled and you can type
-commands instead — the intent routing is identical. To wire a dedicated
-speech-to-text provider, replace the capture in `renderer/app.js` (voice section)
-with your STT of choice and call `assistant.command(transcript)`.
+### Voice control
+
+**Speaking back works** (JARVIS talks via the browser SpeechSynthesis API).
+**Voice-to-text is limited by Electron:** Chromium's `SpeechRecognition` has no
+cloud speech backend in an Electron build (official Chrome ships a Google speech
+key that Electron doesn't), so live dictation typically fails with a `network`
+error. The widget now detects this and tells you clearly instead of blinking
+forever — **type your command** and everything else (routing, actions, spoken
+replies) is identical.
+
+To get *real* voice-to-text, wire a dedicated STT provider: capture mic audio
+with `getUserMedia` + `MediaRecorder` in the widget's voice section, POST it to
+your STT of choice (Whisper API, Deepgram, AssemblyAI, …), and call
+`assistant.command(transcript)` with the result. That needs its own API key/
+service — it can't run off the Anthropic key alone.
 
 Global shortcuts (work from anywhere):
 
@@ -127,7 +137,7 @@ Global shortcuts (work from anywhere):
 | `SA_ACTION_DELAY_MS` | settle delay after each action | `350` |
 | `SA_TARGET_WIDTH` | width Claude "sees"; coords scaled to real px | `1280` |
 | `SA_CONFIRM_EVERY` | require confirmation before *every* action (paranoid) | off |
-| `SA_FULL_CONTROL` | act without per-action approval (STOP still works) | off |
+| `SA_FULL_CONTROL` | act without per-action approval (STOP still works) | **on** |
 | `SA_WATCH_INTERVAL_MS` | Phase 2 capture sampling period | `3000` |
 | `SA_WATCH_MAX_FRAMES` | Phase 2 rolling buffer size | `40` |
 
@@ -162,6 +172,24 @@ into the same approval-gated execution engine. Background reading:
 [OpenAI gpt-realtime](https://openai.com/index/introducing-gpt-realtime/),
 [OpenAI Realtime API guide](https://developers.openai.com/api/docs/guides/realtime),
 [AssemblyAI: how voice agents work](https://www.assemblyai.com/blog/ai-voice-agents).
+
+## Memory — an Obsidian-style vault
+
+JARVIS keeps a **persistent memory** as a folder of markdown files you can open
+directly in [Obsidian](https://obsidian.md). It lives at
+`~/Documents/JARVIS Vault/` and is created on first launch:
+
+- `Identity.md` — who he is (his self-awareness anchor: the widget and the
+  Assistant tab are **the same assistant**, sharing this one memory).
+- `Profile.md` — durable facts he learns about you.
+- `Conversations/YYYY-MM-DD.md` — every exchange, from **both** surfaces, so a
+  chat in the widget is remembered in the Assistant tab and vice-versa.
+- `Memories/<note>.md` — durable notes he chooses to keep, with `[[wikilinks]]`.
+
+He reads a digest of this into every reply, and can actively `recall` (search)
+and `remember` (save) via tools — tell him *"remember that I prefer dark mode"*
+and it lands in `Profile.md`. Click the **🧠 memory** chip on the widget to open
+the vault in your file manager (then "Open folder as vault" in Obsidian).
 
 ## Self-improvement
 

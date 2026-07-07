@@ -157,6 +157,28 @@ await test('WatchBuffer respects maxFrames and recent()', async () => {
     assert.ok(!fs.existsSync(abs), 'restore removed the once-new file');
   });
 
+  // --- memory vault (JARVIS's Obsidian-style long-term memory) ---
+  const memory = require('../lib/memory');
+  await test('memory vault scaffolds, logs turns, remembers, and recalls', () => {
+    const vault = path.join(tmp, 'vault');
+    memory.init(vault);
+    // scaffold notes exist
+    assert.ok(fs.existsSync(path.join(vault, 'Identity.md')), 'Identity note created');
+    assert.ok(fs.existsSync(path.join(vault, 'Profile.md')), 'Profile note created');
+    // a conversation turn is appended to today's note and shows up in context
+    memory.logTurn('user', 'my favourite colour is teal', 'widget');
+    memory.logTurn('assistant', 'Noted — teal it is.', 'assistant tab');
+    assert.ok(memory.recentConversation().some((l) => /teal/.test(l)), 'turn logged');
+    // durable memories are searchable
+    memory.remember({ title: 'Coffee order', body: 'Flat white, oat milk, no sugar.' });
+    memory.rememberAboutUser('Ships side projects on weekends.');
+    const hits = memory.search('oat milk');
+    assert.ok(hits.length >= 1 && /Memories/.test(hits[0].path), 'remembered note is searchable');
+    // the prompt digest surfaces profile + recent conversation
+    const ctx = memory.contextForPrompt();
+    assert.ok(/teal/.test(ctx) && /weekends/.test(ctx), 'context digest includes memory');
+  });
+
   console.log(`\n${passed} test(s) passed.`);
 }
 

@@ -18,6 +18,24 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('./config');
+const memory = require('./memory');
+
+// Shared self-awareness preamble. Both surfaces (widget + Assistant tab) are the
+// SAME assistant with ONE shared memory vault — this is what stops JARVIS from
+// treating his other window as a stranger.
+const IDENTITY =
+  'You are JARVIS, a single AI assistant living on the user\'s computer. You appear in ' +
+  'two windows and BOTH are you: the floating widget (the orb) and the Assistant tab in ' +
+  'the workspace. They are one assistant sharing one persistent memory (an Obsidian-style ' +
+  'vault). A conversation in one window is remembered in the other — never act as if the ' +
+  'other surface is someone else. You can watch the screen, act on the computer, edit your ' +
+  'own code, and remember things between sessions via your memory vault.';
+
+/** Build the memory section for a system prompt (empty string if no vault). */
+function memoryBlock() {
+  const ctx = memory.contextForPrompt();
+  return ctx ? '\n\n--- YOUR MEMORY ---\n' + ctx + '\n--- END MEMORY ---' : '';
+}
 
 function getClient() {
   const apiKey = config.getApiKey();
@@ -119,27 +137,92 @@ async function chat(history, skillsContext) {
   const client = getClient();
 
   const system =
-    'You are a personal desktop assistant that has learned skills by watching the user ' +
-    'work. You are helpful, concise, and safety-conscious: you never claim to have taken ' +
-    'an action on the computer — a separate, human-approved execution step does that.\n\n' +
-    'Here is the user\'s current skill library:\n\n' +
+    IDENTITY +
+    '\n\nYou are helpful, concise, and safety-conscious: you never claim to have taken an ' +
+    'action on the computer — a separate, human-approved execution step does that.\n\n' +
+    "Here is the user's current skill library:\n\n" +
     skillsContext +
     '\n\nWhen the user asks for something that matches a skill, say which skill applies ' +
     '(by name) and offer to run it. End such replies with a line of the exact form:\n' +
     'RUN_SKILL: <skill id>\n' +
-    'Only include that line when you are proposing to execute a specific stored skill.';
+    'Only include that line when you are proposing to execute a specific stored skill.\n\n' +
+    'MEMORY: Use your memory. Call `recall` to look something up before saying you don\'t ' +
+    'know. Call `remember` to save durable facts, preferences, or decisions worth keeping ' +
+    'for next time (use it whenever the user tells you something about themselves or asks ' +
+    'you to remember something).' +
+    memoryBlock();
+
+  const tools = [
+    {
+      name: 'recall',
+      description: 'Search your memory vault for past notes/conversations before answering.',
+      input_schema: {
+        type: 'object',
+        properties: { query: { type: 'string' } },
+        required: ['query'],
+      },
+    },
+    {
+      name: 'remember',
+      description:
+        'Save a durable memory. Use `about_user: true` for a fact/preference about the ' +
+        'human (goes to your Profile); otherwise it becomes a titled note in your vault.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          body: { type: 'string' },
+          about_user: { type: 'boolean' },
+        },
+        required: ['body'],
+      },
+    },
+  ];
 
   const messages = (history || []).map((m) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
     content: m.text,
   }));
 
-  const message = await client.messages.create({
-    model: config.getModel(),
-    max_tokens: 1024,
-    system,
-    messages,
-  });
+  // Bounded tool loop so the model can recall/remember, then answer.
+  let message;
+  for (let hop = 0; hop < 5; hop++) {
+    message = await client.messages.create({
+      model: config.getModel(),
+      max_tokens: 1024,
+      system,
+      tools,
+      messages,
+    });
+    const toolUses = (message.content || []).filter((b) => b.type === 'tool_use');
+    if (message.stop_reason !== 'tool_use' || !toolUses.length) break;
+
+    messages.push({ role: 'assistant', content: message.content });
+    const results = [];
+    for (const tu of toolUses) {
+      let out = 'ok';
+      try {
+        if (tu.name === 'recall') {
+          const hits = memory.search(tu.input.query || '');
+          out = hits.length
+            ? hits.map((h) => `• ${h.path}: ${h.excerpt}`).join('\n')
+            : 'Nothing in memory matched that.';
+        } else if (tu.name === 'remember') {
+          if (tu.input.about_user) {
+            memory.rememberAboutUser(tu.input.body);
+            out = 'Saved to your Profile.';
+          } else {
+            const rel = memory.remember({ title: tu.input.title, body: tu.input.body });
+            out = 'Saved memory note: ' + rel;
+          }
+        }
+      } catch (err) {
+        out = 'Memory error: ' + err.message;
+      }
+      results.push({ type: 'tool_result', tool_use_id: tu.id, content: [{ type: 'text', text: out }] });
+    }
+    messages.push({ role: 'user', content: results });
+  }
 
   const reply = textOf(message);
   const runMatch = /RUN_SKILL:\s*([^\s]+)/.exec(reply);
@@ -279,16 +362,20 @@ async function routeCommand(transcript, skillsContext, workflowsContext) {
   ];
 
   const system =
-    'You are the intent router for a voice-driven desktop assistant. Given the user command, ' +
-    'their skill library, and their workflows, call exactly ONE tool: set_autonomy if they ask ' +
-    'to change how much it asks permission, self_improve if they ask the assistant to change ' +
-    'ITSELF (its own code/behaviour/looks), run_workflow if it matches a saved workflow, ' +
+    IDENTITY +
+    '\n\nYou are also the intent router for your own voice/text commands. Given the user ' +
+    'command, your skill library, and your workflows, call exactly ONE tool: set_autonomy if ' +
+    'they ask to change how much you ask permission, self_improve if they ask you to change ' +
+    'YOURSELF (your own code/behaviour/looks), run_workflow if it matches a saved workflow, ' +
     'run_skill if it matches a taught skill, run_goal for a concrete one-off computer task, or ' +
-    'reply otherwise. Prefer taught knowledge (workflow > skill) over run_goal.\n\n' +
+    'reply otherwise (use reply for questions, chit-chat, or anything about your memory/past ' +
+    'conversations — answer from YOUR MEMORY below). Prefer taught knowledge (workflow > ' +
+    'skill) over run_goal.\n\n' +
     'Skill library:\n' +
     skillsContext +
     '\n\nWorkflows:\n' +
-    (workflowsContext || 'No workflows defined yet.');
+    (workflowsContext || 'No workflows defined yet.') +
+    memoryBlock();
 
   const message = await client.messages.create({
     model: config.getModel(),

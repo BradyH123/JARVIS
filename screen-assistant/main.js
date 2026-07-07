@@ -26,6 +26,8 @@ const {
   Menu,
   nativeImage,
   screen,
+  shell,
+  systemPreferences,
   Tray,
 } = require('electron');
 
@@ -36,6 +38,7 @@ const claude = require('./lib/claude');
 const agent = require('./lib/agent');
 const executor = require('./lib/executor');
 const improver = require('./lib/improver');
+const memory = require('./lib/memory');
 const { WatchBuffer } = require('./lib/monitor');
 
 let mainWindow = null;
@@ -291,16 +294,29 @@ function registerIpc() {
   });
 
   ipcMain.handle('assistant:chat', async (_e, history) => {
-    return claude.chat(history || [], store.contextForPrompt());
+    const hist = history || [];
+    const result = await claude.chat(hist, store.contextForPrompt());
+    // Persist this exchange to the shared memory vault so BOTH surfaces recall it.
+    const lastUser = [...hist].reverse().find((m) => m.role === 'user');
+    if (lastUser) memory.logTurn('user', lastUser.text, 'assistant tab');
+    if (result.reply) memory.logTurn('assistant', result.reply, 'assistant tab');
+    return result;
   });
 
   // Voice/NL command → intent routing (skill, workflow, goal, or reply).
   ipcMain.handle('assistant:command', async (_e, transcript) => {
+    memory.logTurn('user', String(transcript || ''), 'widget');
     const routed = await claude.routeCommand(
       String(transcript || ''),
       store.contextForPrompt(),
       workflows.contextForPrompt(store)
     );
+    // Log what JARVIS decided so the memory reflects both surfaces' activity.
+    if (routed.action === 'reply' && routed.message) {
+      memory.logTurn('assistant', routed.message, 'widget');
+    } else if (routed.action !== 'reply') {
+      memory.logTurn('assistant', `(${routed.action}) ${routed.goal || routed.request || routed.skill_id || ''}`.trim(), 'widget');
+    }
     if (routed.action === 'skill') {
       const skill = store.get(routed.skill_id);
       routed.skill_name = skill ? skill.name : null;
@@ -474,6 +490,27 @@ function registerIpc() {
     return { ok: true };
   });
 
+  // --- Memory vault (JARVIS's Obsidian-style long-term memory) ---
+  ipcMain.handle('memory:info', async () => ({
+    path: memory.vaultPath(),
+    notes: memory.listNotes().length,
+  }));
+  // Reveal the vault in Finder/Explorer so the user can open it in Obsidian.
+  ipcMain.handle('memory:open', async () => {
+    const p = memory.vaultPath();
+    if (p) await shell.openPath(p);
+    return { ok: Boolean(p), path: p };
+  });
+  ipcMain.handle('memory:search', async (_e, query) => memory.search(String(query || ''), 8));
+  ipcMain.handle('memory:remember', async (_e, payload) => {
+    const { title, body, aboutUser } = payload || {};
+    if (aboutUser) {
+      memory.rememberAboutUser(body);
+      return { ok: true, where: 'Profile.md' };
+    }
+    return { ok: true, where: memory.remember({ title, body }) };
+  });
+
   // Renderer's answer to a confirm-request.
   ipcMain.handle('assistant:confirm', async (_e, { id, approved }) => {
     const resolve = pendingConfirms.get(id);
@@ -580,12 +617,27 @@ app.whenReady().then(() => {
   config.init(app.getPath('userData'));
   store = new SkillStore(path.join(app.getPath('userData'), 'skills.json'));
   workflows = new WorkflowStore(path.join(app.getPath('userData'), 'workflows.json'));
+  // JARVIS's long-term memory: an Obsidian-style vault. Put it somewhere the user
+  // can find and open in Obsidian (Documents), falling back to app storage.
+  let vaultDir;
+  try {
+    vaultDir = path.join(app.getPath('documents'), 'JARVIS Vault');
+  } catch {
+    vaultDir = path.join(app.getPath('userData'), 'JARVIS Vault');
+  }
+  memory.init(vaultDir);
   watch = new WatchBuffer({
     capture: captureSized,
     intervalMs: config.getWatchIntervalMs(),
     maxFrames: config.getWatchMaxFrames(),
     onTick: (status) => broadcast('watch:event', status),
   });
+  // Ask macOS for microphone access up front so the voice button's permission
+  // path works (this does NOT fix Electron's lack of a speech-to-text backend,
+  // but it makes the OS prompt appear instead of a silent 'not-allowed').
+  if (process.platform === 'darwin' && systemPreferences.askForMediaAccess) {
+    systemPreferences.askForMediaAccess('microphone').catch(() => {});
+  }
   registerIpc();
   createTray(); // menu-bar safety net — the widget can always be brought back
   createWidget(); // the JARVIS widget is the primary, always-on surface

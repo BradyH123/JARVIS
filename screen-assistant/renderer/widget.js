@@ -207,6 +207,13 @@ if (api.onWidgetCollapsed) api.onWidgetCollapsed(applyCollapsed);
 if (api.onWidgetSummon) api.onWidgetSummon(() => collapsed && api.collapseWidget(false));
 document.getElementById('wx-open-skills').addEventListener('click', () => api.openDashboard('skills'));
 document.getElementById('wx-open-wf').addEventListener('click', () => api.openDashboard('workflows'));
+const memBtn = document.getElementById('wx-open-memory');
+if (memBtn && api.memory) {
+  memBtn.addEventListener('click', async () => {
+    log('info', 'Opening my memory vault…');
+    await api.memory.open();
+  });
+}
 stopBtn.addEventListener('click', () => {
   log('warn', 'Stop requested…');
   api.stop();
@@ -304,6 +311,7 @@ const micBtn = document.getElementById('wx-mic');
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let listening = false; // is the mic armed (user toggled it on)?
+let voiceUnavailable = false; // set once we learn STT can't work in this build
 if (!SR) {
   micBtn.disabled = true;
   micBtn.title = 'Speech not available in this build — type instead';
@@ -340,15 +348,42 @@ if (!SR) {
   };
   recognition.onerror = (ev) => {
     // 'no-speech'/'aborted' are benign; onend handles the restart.
-    if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+    if (ev.error === 'not-allowed') {
       listening = false;
+      voiceUnavailable = true;
       micBtn.classList.remove('listening');
-      say('I need microphone permission. Enable it in System Settings.', { interrupt: true });
+      log('warn', 'Microphone permission denied — enable it for the app in System Settings › Privacy › Microphone.');
+      say('I need microphone permission. Enable it in System Settings, then click the mic again.', { interrupt: true });
+    } else if (ev.error === 'network' || ev.error === 'service-not-allowed') {
+      // The real Electron limitation: Chromium's speech recognizer has no cloud
+      // backend in this build, so it can't transcribe. Stop the silent retry
+      // loop and tell the user plainly instead of pretending to listen.
+      listening = false;
+      voiceUnavailable = true;
+      micBtn.classList.remove('listening');
+      micBtn.textContent = '🎙';
+      micBtn.title = 'Live voice-to-text is not available in this build — type your command instead';
+      if (current === 'listening') setState('idle', 'Voice STT unavailable — type instead');
+      log('warn', "Voice recognition isn't available in this build (no speech backend). Type your command — everything else works the same.");
+      say("Live voice typing isn't available in this build, so please type your command. I'll still speak back.", { interrupt: true });
+    } else if (ev.error === 'audio-capture') {
+      listening = false;
+      voiceUnavailable = true;
+      micBtn.classList.remove('listening');
+      log('warn', 'No microphone found.');
+      say('I could not find a microphone.', { interrupt: true });
     }
   };
 
   function startListening() {
     if (listening) return;
+    if (voiceUnavailable) {
+      // Don't fake a listening state we can't fulfil — point the user at typing.
+      log('warn', "Voice-to-text isn't available in this build. Type your command below — I'll still reply out loud.");
+      say("Voice typing isn't available here, so please type your command.", { interrupt: true });
+      cmd.focus();
+      return;
+    }
     listening = true;
     micBtn.classList.add('listening');
     micBtn.textContent = '● live';

@@ -43,6 +43,14 @@ contextBridge.exposeInMainWorld('assistant', {
   },
   onImproveEvent: (cb) => ipcRenderer.on('improve:event', (_e, evt) => cb(evt)),
 
+  // Memory vault (Obsidian-style long-term memory).
+  memory: {
+    info: () => ipcRenderer.invoke('memory:info'),
+    open: () => ipcRenderer.invoke('memory:open'),
+    search: (query) => ipcRenderer.invoke('memory:search', query),
+    remember: (payload) => ipcRenderer.invoke('memory:remember', payload),
+  },
+
   // Phase 3: workflows (compositions of skills/goals).
   workflows: {
     list: () => ipcRenderer.invoke('workflows:list'),

@@ -110,9 +110,11 @@ const getConfirmEvery = () => {
   return v === true || /^(1|true|yes)$/i.test(String(v));
 };
 // Full Control: skip per-action approval prompts entirely (the STOP kill switch
-// still always works). Off by default — the user opts in.
+// still always works). Defaults ON so JARVIS has full access to the computer by
+// default; turn it off (Settings, or say "ask before acting") to restore the
+// per-action approval gate. A saved setting always wins over this default.
 const getFullControl = () => {
-  const v = value('fullControl', 'SA_FULL_CONTROL', false);
+  const v = value('fullControl', 'SA_FULL_CONTROL', true);
   return v === true || /^(1|true|yes)$/i.test(String(v));
 };
 const getWatchIntervalMs = () => Number(value('watchIntervalMs', 'SA_WATCH_INTERVAL_MS', 3000));
