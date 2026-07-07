@@ -269,6 +269,25 @@ await test('WatchBuffer respects maxFrames and recent()', async () => {
     assert.ok(/success/i.test(telemetry.summaryText()));
   });
 
+  // --- deep crawler HTML extraction (pure) ---
+  const crawler = require('../lib/crawler');
+  await test('crawler.extract pulls links, title, text, meta from HTML', () => {
+    const html =
+      '<html><head><title>Hi There</title>' +
+      '<meta name="description" content="a demo page">' +
+      '<script type="application/ld+json">{"@type":"Article","name":"X"}</script>' +
+      '</head><body><h1>Head</h1><p>Hello world</p>' +
+      '<a href="/about">About</a><a href="https://ex.com/x">Ext</a>' +
+      '<script>var z=1</script></body></html>';
+    const d = crawler.extract(html, 'https://site.test/page');
+    assert.strictEqual(d.title, 'Hi There');
+    assert.strictEqual(d.meta.description, 'a demo page');
+    assert.ok(d.links.some((l) => l.href === 'https://site.test/about'), 'resolves relative link');
+    assert.ok(d.links.some((l) => l.href === 'https://ex.com/x'), 'keeps absolute link');
+    assert.ok(/Hello world/.test(d.text) && !/var z/.test(d.text), 'strips script/tags from text');
+    assert.strictEqual(d.jsonld.length, 1, 'parses JSON-LD');
+  });
+
   console.log(`\n${passed} test(s) passed.`);
 }
 

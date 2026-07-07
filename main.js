@@ -43,6 +43,7 @@ const improver = require('./lib/improver');
 const claudecode = require('./lib/claudecode');
 const terminal = require('./lib/shell');
 const webpage = require('./lib/webpage');
+const crawler = require('./lib/crawler');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
 const memory = require('./lib/memory');
@@ -686,6 +687,89 @@ function registerIpc() {
       send({ type: 'error', message: err.message });
       send({ type: 'finished', status: 'error', message: err.message });
       return { status: 'error', message: err.message };
+    }
+  });
+
+  // DEEP crawl: follow links from the current page (or a URL) several levels deep
+  // and harvest every page, saved to a per-crawl folder. Polite + abortable.
+  ipcMain.handle('webpage:crawl', async (_e, payload) => {
+    if (sessionRunning || improveRunning) return { status: 'busy' };
+    const send = (evt) => broadcast('agent:event', evt);
+    let startUrl = payload && payload.startUrl;
+    if (!startUrl) {
+      const active = await webpage.readActiveTab().catch(() => ({}));
+      startUrl = active && active.url;
+    }
+    if (!startUrl) {
+      const msg = 'No starting URL — open the page you want to crawl, or give me a URL.';
+      send({ type: 'finished', status: 'error', message: msg });
+      return { status: 'error', message: msg };
+    }
+
+    const depth = payload && payload.depth;
+    const maxPages = payload && payload.maxPages;
+    sessionAbort = false;
+    sessionRunning = true;
+    send({ type: 'started', goal: `Deep crawl from ${startUrl}` });
+    memory.logTurn('assistant', `(deep crawl) ${startUrl}`, 'widget');
+    const crawlStart = Date.now();
+    try {
+      const pages = await crawler.crawl({
+        startUrl,
+        maxDepth: depth,
+        maxPages,
+        onProgress: (p) =>
+          send({ type: 'log', text: `[${p.done} done · ${p.queued} queued · d${p.depth}] ${p.url}`.slice(0, 200) }),
+        shouldAbort: () => sessionAbort,
+      });
+      if (!pages.length) {
+        const msg = 'Crawl returned no pages (site blocked it, or nothing linkable).';
+        send({ type: 'error', message: msg });
+        send({ type: 'finished', status: 'error', message: msg });
+        return { status: 'error', message: msg };
+      }
+      // Save all pages under one crawl folder + an index.
+      const base = memory.vaultPath()
+        ? path.join(memory.vaultPath(), 'Harvests')
+        : path.join(app.getPath('userData'), 'Harvests');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const host = (() => {
+        try {
+          return new URL(startUrl).hostname;
+        } catch {
+          return 'site';
+        }
+      })();
+      const dir = path.join(base, `crawl-${stamp}-${host}`);
+      fs.mkdirSync(dir, { recursive: true });
+      pages.forEach((p, i) => {
+        const slug = String(p.title || p.url || 'page-' + i)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 50);
+        fs.writeFileSync(path.join(dir, `${String(i + 1).padStart(3, '0')}-${slug || 'page'}.json`), JSON.stringify(p, null, 2), 'utf8');
+      });
+      fs.writeFileSync(
+        path.join(dir, '_index.json'),
+        JSON.stringify({ startUrl, pages: pages.map((p) => ({ url: p.url, title: p.title, depth: p.depth, links: p.counts.links, chars: p.counts.chars })) }, null, 2),
+        'utf8'
+      );
+      const totalChars = pages.reduce((a, p) => a + (p.text || '').length, 0);
+      const totalLinks = pages.reduce((a, p) => a + p.counts.links, 0);
+      const secs = Math.round((Date.now() - crawlStart) / 1000);
+      const msg = `Deep crawl done: ${pages.length} pages, ${totalLinks} links, ${Math.round(totalChars / 1000)}k chars in ${secs}s. Saved to ${dir}.`;
+      telemetry.record({ kind: 'crawl', goal: host, status: 'done', steps: pages.length, durationMs: Date.now() - crawlStart });
+      memory.logTurn('assistant', `(crawled ${pages.length} pages of ${host})`, 'widget');
+      send({ type: 'done', message: msg });
+      send({ type: 'finished', status: 'done', message: msg });
+      return { status: 'done', dir, pages: pages.length };
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    } finally {
+      sessionRunning = false;
     }
   });
 
