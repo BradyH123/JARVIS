@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('assistant', {
   execute: (payload) => ipcRenderer.invoke('assistant:execute', payload),
   quick: (payload) => ipcRenderer.invoke('assistant:quick', payload),
   runCommand: (payload) => ipcRenderer.invoke('assistant:shell', payload),
+  transcribe: (audio) => ipcRenderer.invoke('voice:transcribe', audio),
   stop: () => ipcRenderer.invoke('assistant:stop'),
   confirm: (payload) => ipcRenderer.invoke('assistant:confirm', payload),
   onAgentEvent: (cb) => ipcRenderer.on('agent:event', (_e, evt) => cb(evt)),

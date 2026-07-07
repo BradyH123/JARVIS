@@ -41,6 +41,7 @@ const quickactions = require('./lib/quickactions');
 const improver = require('./lib/improver');
 const claudecode = require('./lib/claudecode');
 const terminal = require('./lib/shell');
+const transcribe = require('./lib/transcribe');
 const memory = require('./lib/memory');
 const { WatchBuffer } = require('./lib/monitor');
 const { execFile } = require('child_process');
@@ -746,6 +747,17 @@ function registerIpc() {
       return { ok: true, where: 'Profile.md' };
     }
     return { ok: true, where: memory.remember({ title, body }) };
+  });
+
+  // Voice: transcribe recorded mic audio via OpenAI Whisper. The renderer records
+  // and sends the bytes; the key + HTTP stay in main.
+  ipcMain.handle('voice:transcribe', async (_e, audio) => {
+    try {
+      const buf = Buffer.from(audio);
+      return await transcribe.transcribe(buf, config.getOpenAIKey());
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 
   // Renderer's answer to a confirm-request.

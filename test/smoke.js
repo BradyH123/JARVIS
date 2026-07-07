@@ -84,6 +84,18 @@ await test('config stores API key and reports a storage mode', () => {
   assert.ok(['encrypted', 'plaintext'].includes(config.snapshot().keyStorageMode));
 });
 
+await test('config stores a separate OpenAI key (for voice)', () => {
+  config.init(fs.mkdtempSync(path.join(os.tmpdir(), 'sa-oa-')));
+  assert.strictEqual(config.snapshot().hasOpenAIKey, false);
+  config.update({ openaiApiKey: 'sk-openai-test' });
+  assert.strictEqual(config.getOpenAIKey(), 'sk-openai-test');
+  assert.strictEqual(config.snapshot().hasOpenAIKey, true);
+  // the two keys are independent
+  config.update({ apiKey: 'sk-ant-test' });
+  assert.strictEqual(config.getOpenAIKey(), 'sk-openai-test');
+  assert.strictEqual(config.getApiKey(), 'sk-ant-test');
+});
+
 // --- WatchBuffer bounds ---
 const { WatchBuffer } = require('../lib/monitor');
 await test('WatchBuffer respects maxFrames and recent()', async () => {

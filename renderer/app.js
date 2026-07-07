@@ -56,6 +56,10 @@ async function openSettings() {
   };
   document.getElementById('set-storage').textContent = modes[s.keyStorageMode] || '';
   document.getElementById('set-key-status').textContent = s.hasKey ? 'A key is currently set.' : '';
+  const oaField = document.getElementById('set-openai-key');
+  if (oaField) oaField.value = '';
+  const oaStatus = document.getElementById('set-openai-status');
+  if (oaStatus) oaStatus.textContent = s.hasOpenAIKey ? 'A voice key is set.' : 'Not set — voice is disabled until you add one.';
   settingsModal.classList.remove('hidden');
 }
 
@@ -72,6 +76,9 @@ document.getElementById('set-save').addEventListener('click', async () => {
   };
   const key = document.getElementById('set-key').value.trim();
   if (key) patch.apiKey = key;
+  const oaField = document.getElementById('set-openai-key');
+  const oaKey = oaField ? oaField.value.trim() : '';
+  if (oaKey) patch.openaiApiKey = oaKey;
   await api.settings.update(patch);
   settingsModal.classList.add('hidden');
   showConfig();
