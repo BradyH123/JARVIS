@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('assistant', {
   execute: (payload) => ipcRenderer.invoke('assistant:execute', payload),
   quick: (payload) => ipcRenderer.invoke('assistant:quick', payload),
   lookAtScreen: (question) => ipcRenderer.invoke('assistant:look', question),
+  doAnything: (goal) => ipcRenderer.invoke('assistant:do', goal),
   harvest: (allTabs) => ipcRenderer.invoke('webpage:harvest', allTabs),
   crawl: (opts) => ipcRenderer.invoke('webpage:crawl', opts),
   sweep: {

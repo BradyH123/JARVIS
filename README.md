@@ -191,6 +191,23 @@ into the same approval-gated execution engine. Background reading:
 [OpenAI Realtime API guide](https://developers.openai.com/api/docs/guides/realtime),
 [AssemblyAI: how voice agents work](https://www.assemblyai.com/blog/ai-voice-agents).
 
+## Do almost anything — the orchestrator
+
+For requests that need **several steps**, JARVIS plans and executes them in
+sequence across all its capabilities. Say *"do this: research the top 3 standing
+desks, save the findings to a note, and open it"* — or just phrase a multi-step
+goal — and it:
+
+1. **Plans** the request into concrete steps (`claude.planTasks`), each mapped to
+   one capability: open/search, shell command, find a file, search file contents,
+   read the screen/page, crawl a site, harvest a page, or drive the GUI.
+2. **Executes** each step in order (`assistant:do`), streaming a live plan +
+   per-step progress, routing destructive commands through the approval gate, and
+   halting instantly on STOP.
+
+The intent router picks this automatically for multi-step requests; you can also
+force it with *"do this: …"* / *"handle this for me: …"*.
+
 ## Memory — an Obsidian-style vault
 
 JARVIS keeps a **persistent memory** as a folder of markdown files you can open
