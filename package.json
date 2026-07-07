@@ -9,6 +9,7 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "test": "node test/smoke.js",
+    "eval": "node test/eval/run.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
