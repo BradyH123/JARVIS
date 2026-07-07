@@ -269,6 +269,11 @@ async function runCommand(text) {
     await api.improve.relaunch();
     return;
   }
+  if (/^\s*(update|upgrade)\s+(yourself|jarvis|the app)?\s*$/i.test(text)) {
+    say('Pulling my latest code from git.', { interrupt: true });
+    await api.improve.selfUpdate();
+    return;
+  }
   setState('thinking');
   try {
     const routed = await api.command(text);
@@ -552,6 +557,13 @@ if (api.onImproveEvent) {
         break;
       case 'thinking':
         log('think', '🧠 ' + evt.text);
+        break;
+      case 'action':
+        // Claude Code tool activity (edits, bash, reads, greps).
+        log('action', '➤ ' + (evt.text || ''));
+        break;
+      case 'log':
+        log('think', evt.text || '');
         break;
       case 'read':
         log('action', '👁 read ' + evt.path);

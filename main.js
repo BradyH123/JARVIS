@@ -39,8 +39,39 @@ const agent = require('./lib/agent');
 const executor = require('./lib/executor');
 const quickactions = require('./lib/quickactions');
 const improver = require('./lib/improver');
+const claudecode = require('./lib/claudecode');
 const memory = require('./lib/memory');
 const { WatchBuffer } = require('./lib/monitor');
+const { execFile } = require('child_process');
+
+// The JARVIS repo root when running from source (main.js sits at the root).
+// Self-editing via Claude Code only works from a checkout, not a packaged asar.
+const REPO_DIR = __dirname;
+
+/** Files changed in the working tree (porcelain), best-effort. */
+function changedFiles() {
+  return new Promise((resolve) => {
+    execFile('git', ['-C', REPO_DIR, 'status', '--porcelain'], { timeout: 5000 }, (err, out) => {
+      if (err) return resolve([]);
+      const files = String(out || '')
+        .split('\n')
+        .map((l) => l.slice(3).trim())
+        .filter(Boolean);
+      resolve(files);
+    });
+  });
+}
+
+const SELF_IMPROVE_TASK = (goal) =>
+  'You are working inside JARVIS\'s OWN source repository (an Electron desktop ' +
+  'assistant: main process in main.js, sandboxed renderer in renderer/, logic in ' +
+  'lib/). The user wants you to improve JARVIS itself.\n\n' +
+  `TASK: ${goal}\n\n` +
+  'Guidelines: read the relevant files first; make the smallest change that ' +
+  'satisfies the task and matches the existing style; keep every file valid; do ' +
+  'NOT weaken the safety model (approval gates, STOP kill switch, path guards). ' +
+  'When done, run the tests with `node test/smoke.js` and make sure they pass. ' +
+  'Finish with a one-line summary of what you changed.';
 
 let mainWindow = null;
 let widgetWindow = null; // always-on-top JARVIS widget
@@ -492,11 +523,34 @@ function registerIpc() {
     improveRunning = true;
     send({ type: 'started', goal: String(goal) });
     try {
-      const result = await improver.improve({
-        goal: String(goal),
-        onEvent: send,
-        shouldAbort: () => sessionAbort,
-      });
+      let result;
+      // Prefer Claude Code (full agentic coding on the real repo) when it's
+      // installed; otherwise fall back to the built-in API editor.
+      if (claudecode.isAvailable()) {
+        send({ type: 'thinking', text: 'Using Claude Code to work on my own repository…' });
+        const cc = await claudecode.improve({
+          task: SELF_IMPROVE_TASK(String(goal)),
+          cwd: REPO_DIR,
+          model: config.getModel(),
+          onEvent: send,
+          shouldAbort: () => sessionAbort,
+        });
+        const changed = await changedFiles();
+        result = {
+          status: cc.status,
+          summary: cc.summary || (cc.status === 'done' ? 'Change complete.' : ''),
+          message: cc.message,
+          changed,
+          engine: 'claude-code',
+        };
+      } else {
+        result = await improver.improve({
+          goal: String(goal),
+          onEvent: send,
+          shouldAbort: () => sessionAbort,
+        });
+        result.engine = 'builtin';
+      }
       send({ type: 'finished', ...result });
       return result;
     } catch (err) {
@@ -505,6 +559,27 @@ function registerIpc() {
     } finally {
       improveRunning = false;
     }
+  });
+
+  // Self-update: pull the latest code from git, then relaunch to apply it.
+  ipcMain.handle('improve:selfupdate', async () => {
+    if (sessionRunning || improveRunning) return { status: 'busy' };
+    const send = (evt) => broadcast('improve:event', evt);
+    send({ type: 'started', goal: 'Updating myself from git' });
+    return new Promise((resolve) => {
+      execFile('git', ['-C', REPO_DIR, 'pull', '--ff-only'], { timeout: 60000 }, (err, out, errOut) => {
+        const text = String(out || '') + String(errOut || '');
+        if (err) {
+          send({ type: 'error', message: 'git pull failed: ' + text.trim().slice(0, 200) });
+          send({ type: 'finished', status: 'error', message: text.trim().slice(0, 200) });
+          return resolve({ status: 'error', message: text.trim() });
+        }
+        const upToDate = /up to date/i.test(text);
+        send({ type: 'thinking', text: upToDate ? 'Already up to date.' : 'Pulled updates: ' + text.trim().slice(0, 200) });
+        send({ type: 'finished', status: 'done', summary: upToDate ? 'Already up to date.' : 'Updated — reload to apply.', changed: [], engine: 'git' });
+        resolve({ status: 'done', upToDate });
+      });
+    });
   });
 
   // Relaunch the app so freshly self-edited code takes effect.
@@ -556,6 +631,7 @@ function registerIpc() {
   ipcMain.handle('config:info', async () => ({
     ...config.snapshot(),
     canControl: executor.isAvailable(),
+    canSelfImprove: claudecode.isAvailable(),
     platform: process.platform,
     isWayland:
       process.platform === 'linux' &&
