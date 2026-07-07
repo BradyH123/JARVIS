@@ -163,6 +163,8 @@ jarvis/  (repo root)
 │   ├── improver.js    built-in self-improvement loop (fallback editor)
 │   ├── claudecode.js  self-improvement via the Claude Code CLI on its own repo
 │   ├── memory.js      Obsidian-style long-term memory vault
+│   ├── telemetry.js   records his own run metrics; feeds data-driven self-optimization
+│   ├── transcribe.js  OpenAI Whisper speech-to-text (voice)
 │   └── monitor.js     Phase 2 in-memory watch buffer — continuous perception
 └── renderer/          Teach / Watch / Skills / Assistant tabs + run overlay + voice
 ```
@@ -195,6 +197,24 @@ He reads a digest of this into every reply, and can actively `recall` (search)
 and `remember` (save) via tools — tell him *"remember that I prefer dark mode"*
 and it lands in `Profile.md`. Click the **🧠 memory** chip on the widget to open
 the vault in your file manager (then "Open folder as vault" in Obsidian).
+
+## Self-measurement & learning
+
+JARVIS gathers data on his own work and on how you use your computer, and turns
+both into improvement:
+
+- **Self-telemetry** (`lib/telemetry.js`): every run — a task, quick action,
+  screen read, shell command — records its kind, outcome, duration, and steps to
+  `telemetry.jsonl`. Ask *"how are you doing"* / *"show your stats"* for a digest
+  (success rate, slowest kinds, common errors).
+- **Data-driven self-optimization**: say *"optimize yourself"* and he feeds that
+  real performance summary into the self-improvement flow, targeting the slowest
+  and least-reliable code — then you `upload yourself` and `reload yourself`.
+- **Watch-and-learn**: say *"watch me work"* / *"learn how I work"* and he turns
+  on the local capture buffer and, every couple of minutes, summarizes what app
+  and interface you're using and how — saved to `Observations/` in the vault, so
+  he builds up knowledge of human UIs to reuse later. *"Stop watching"* ends it.
+  (Frames stay local; only short text summaries are kept.)
 
 ## Self-improvement
 
