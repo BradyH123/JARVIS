@@ -545,10 +545,10 @@ async function captureOnce() {
       const res = await api.transcribe(audio);
       if (res && res.ok && res.text) {
         await runCommand(res.text);
-      } else if (res && /openai api key/i.test(res.error || '')) {
+      } else if (res && /api key set/i.test(res.error || '')) {
         disarmVoice();
-        log('warn', 'Add your OpenAI key in Settings (⚙) to use voice.');
-        say('Add your open A I key in settings to use voice.', { interrupt: true });
+        log('warn', 'Add your voice (STT) key in Settings (⚙) — Groq is free. Then click the mic again.');
+        say('Add your voice key in settings to use voice.', { interrupt: true });
         api.openDashboard();
         return;
       } else if (res && res.error) {

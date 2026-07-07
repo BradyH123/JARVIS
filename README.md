@@ -108,10 +108,17 @@ auto-stops after a short pause, is transcribed by Whisper, and runs as a command
 — then he listens again. He won't record while he's speaking (no feedback loop),
 and the STOP control always applies.
 
-This needs an **OpenAI API key** (separate from your Anthropic key, because the
-Anthropic API has no speech-to-text). Add it in **⚙ Settings → OpenAI API key**;
-it's stored encrypted via the OS keychain like the Anthropic key. Without it, the
-mic is disabled and you type commands instead — routing is identical.
+This needs a **speech-to-text key** (separate from your Anthropic key, because the
+Anthropic API has no STT). Pick a provider in **⚙ Settings → Voice provider** and
+paste the matching key:
+
+- **Groq** *(default, recommended)* — runs Whisper with a real **free tier**;
+  sign up at console.groq.com and paste the key. Fast and free.
+- **OpenAI** — Whisper (`whisper-1`); needs OpenAI credits.
+- **Deepgram** — Nova; needs a Deepgram key.
+
+The key is stored encrypted via the OS keychain. Without one, the mic is disabled
+and you type commands instead — routing is identical.
 
 Pipeline: `renderer/widget.js` records with `getUserMedia`/`MediaRecorder` +
 silence detection → `lib/transcribe.js` (main process) POSTs to Whisper →

@@ -865,7 +865,7 @@ function registerIpc() {
   ipcMain.handle('voice:transcribe', async (_e, audio) => {
     try {
       const buf = Buffer.from(audio);
-      return await transcribe.transcribe(buf, config.getOpenAIKey());
+      return await transcribe.transcribe(buf, config.getOpenAIKey(), { provider: config.getSttProvider() });
     } catch (err) {
       return { ok: false, error: err.message };
     }

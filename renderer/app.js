@@ -60,8 +60,10 @@ async function openSettings() {
   document.getElementById('set-key-status').textContent = s.hasKey ? 'A key is currently set.' : '';
   const oaField = document.getElementById('set-openai-key');
   if (oaField) oaField.value = '';
+  const sttSel = document.getElementById('set-stt-provider');
+  if (sttSel && s.sttProvider) sttSel.value = s.sttProvider;
   const oaStatus = document.getElementById('set-openai-status');
-  if (oaStatus) oaStatus.textContent = s.hasOpenAIKey ? 'A voice key is set.' : 'Not set — voice is disabled until you add one.';
+  if (oaStatus) oaStatus.textContent = s.hasOpenAIKey ? 'A voice key is set.' : 'Not set — voice is disabled until you add a key for the provider above.';
   settingsModal.classList.remove('hidden');
 }
 
@@ -84,6 +86,8 @@ document.getElementById('set-save').addEventListener('click', async () => {
   const oaField = document.getElementById('set-openai-key');
   const oaKey = oaField ? oaField.value.trim() : '';
   if (oaKey) patch.openaiApiKey = oaKey;
+  const sttSel = document.getElementById('set-stt-provider');
+  if (sttSel) patch.sttProvider = sttSel.value;
   await api.settings.update(patch);
   settingsModal.classList.add('hidden');
   showConfig();
