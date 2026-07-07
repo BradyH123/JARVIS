@@ -84,15 +84,17 @@ await test('config stores API key and reports a storage mode', () => {
   assert.ok(['encrypted', 'plaintext'].includes(config.snapshot().keyStorageMode));
 });
 
-await test('config stores a separate OpenAI key (for voice)', () => {
+await test('config stores a separate voice key + provider (default groq)', () => {
   config.init(fs.mkdtempSync(path.join(os.tmpdir(), 'sa-oa-')));
   assert.strictEqual(config.snapshot().hasOpenAIKey, false);
-  config.update({ openaiApiKey: 'sk-openai-test' });
-  assert.strictEqual(config.getOpenAIKey(), 'sk-openai-test');
+  assert.strictEqual(config.getSttProvider(), 'groq', 'defaults to groq');
+  config.update({ openaiApiKey: 'voice-test-key', sttProvider: 'deepgram' });
+  assert.strictEqual(config.getOpenAIKey(), 'voice-test-key');
+  assert.strictEqual(config.getSttProvider(), 'deepgram');
   assert.strictEqual(config.snapshot().hasOpenAIKey, true);
-  // the two keys are independent
+  // the voice key is independent of the Anthropic key
   config.update({ apiKey: 'sk-ant-test' });
-  assert.strictEqual(config.getOpenAIKey(), 'sk-openai-test');
+  assert.strictEqual(config.getOpenAIKey(), 'voice-test-key');
   assert.strictEqual(config.getApiKey(), 'sk-ant-test');
 });
 

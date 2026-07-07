@@ -226,8 +226,16 @@
         <p class="muted tiny" id="set-key-status"></p>
 
         <label>
-          OpenAI API key <span class="muted tiny">(for voice — Whisper transcription)</span>
-          <input id="set-openai-key" type="password" placeholder="sk-… (leave blank to keep current)" />
+          Voice provider <span class="muted tiny">(speech-to-text)</span>
+          <select id="set-stt-provider">
+            <option value="groq">Groq — Whisper (free tier, recommended)</option>
+            <option value="openai">OpenAI — Whisper</option>
+            <option value="deepgram">Deepgram — Nova</option>
+          </select>
+        </label>
+        <label>
+          Voice (STT) API key <span class="muted tiny">(matches the provider above)</span>
+          <input id="set-openai-key" type="password" placeholder="key… (leave blank to keep current)" />
         </label>
         <p class="muted tiny" id="set-openai-status"></p>
 
