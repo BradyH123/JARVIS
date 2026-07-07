@@ -278,6 +278,14 @@ async function runCommand(text) {
     } else if (routed.action === 'workflow') {
       log('info', 'Running workflow: ' + (routed.workflow_name || routed.workflow_id));
       await api.workflows.run(routed.workflow_id);
+    } else if (routed.action === 'quick_action') {
+      // Instant path (open app / site / search) — no screenshot loop.
+      const r = await api.quick({ kind: routed.kind, target: routed.target });
+      if (r && r.status === 'fallback') {
+        // Not supported on this OS — fall back to the visual agent.
+        log('info', 'Falling back to full control for: ' + routed.target);
+        await api.execute({ goal: `${routed.kind.replace('_', ' ')} ${routed.target}` });
+      }
     } else if (routed.action === 'goal') {
       log('info', 'Goal: ' + routed.goal);
       await api.execute({ goal: routed.goal });

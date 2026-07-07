@@ -179,6 +179,16 @@ await test('WatchBuffer respects maxFrames and recent()', async () => {
     assert.ok(/teal/.test(ctx) && /weekends/.test(ctx), 'context digest includes memory');
   });
 
+  // --- quick actions (instant fast-path URL/app/search) ---
+  const quick = require('../lib/quickactions');
+  await test('quickactions.normalizeUrl handles urls, domains, and non-urls', () => {
+    assert.strictEqual(quick.normalizeUrl('https://google.com'), 'https://google.com');
+    assert.strictEqual(quick.normalizeUrl('google.com'), 'https://google.com');
+    assert.strictEqual(quick.normalizeUrl('youtube.com/feed'), 'https://youtube.com/feed');
+    assert.strictEqual(quick.normalizeUrl('pizza near me'), null, 'a phrase is not a URL');
+    assert.strictEqual(quick.normalizeUrl(''), null);
+  });
+
   console.log(`\n${passed} test(s) passed.`);
 }
 

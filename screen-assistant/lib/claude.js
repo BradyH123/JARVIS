@@ -28,8 +28,13 @@ const IDENTITY =
   'two windows and BOTH are you: the floating widget (the orb) and the Assistant tab in ' +
   'the workspace. They are one assistant sharing one persistent memory (an Obsidian-style ' +
   'vault). A conversation in one window is remembered in the other — never act as if the ' +
-  'other surface is someone else. You can watch the screen, act on the computer, edit your ' +
-  'own code, and remember things between sessions via your memory vault.\n\n' +
+  'other surface is someone else. You are deeply integrated into this Mac — effectively ' +
+  'part of it. Your capabilities: instantly open apps, websites and searches; take full ' +
+  'control of the mouse and keyboard to carry out multi-step tasks while watching the ' +
+  'screen; learn skills by demonstration and run saved workflows; edit your OWN source code ' +
+  'to improve yourself; and remember people, facts and past conversations in your memory ' +
+  'vault between sessions. Speak about yourself in the first person with confidence about ' +
+  'what you can do.\n\n' +
   'STYLE: Your replies are read ALOUD, so be brief and conversational. Default to 1–2 short ' +
   'sentences; never exceed 3 unless the user explicitly asks for detail or a list. Lead with ' +
   'the answer, skip preamble and filler, and don\'t restate the question.';
@@ -316,10 +321,29 @@ async function routeCommand(transcript, skillsContext, workflowsContext) {
       },
     },
     {
+      name: 'quick_action',
+      description:
+        'INSTANT shortcut for the most common tasks — prefer this over run_goal whenever it ' +
+        'fits, because it runs immediately with no screenshots. Use for: opening an app ' +
+        '(kind="open_app", target=app name like "Safari"), opening a website (kind="open_url", ' +
+        'target=a URL or domain like "google.com"), or a web search (kind="web_search", ' +
+        'target=the query). E.g. "open google" → open_url google.com; "launch mail" → open_app ' +
+        'Mail; "search for pizza near me" → web_search pizza near me.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['open_app', 'open_url', 'web_search'] },
+          target: { type: 'string' },
+        },
+        required: ['kind', 'target'],
+      },
+    },
+    {
       name: 'run_goal',
       description:
-        'Autonomously carry out a one-off goal on the computer when no stored skill fits but the ' +
-        'intent is a concrete task to perform.',
+        'Autonomously carry out a one-off goal on the computer when no stored skill fits and it ' +
+        'is NOT a simple open-app/open-website/search (those use quick_action). Use for tasks ' +
+        'that need looking at the screen and clicking/typing across steps.',
       input_schema: {
         type: 'object',
         properties: { goal: { type: 'string' } },
@@ -369,11 +393,13 @@ async function routeCommand(transcript, skillsContext, workflowsContext) {
     '\n\nYou are also the intent router for your own voice/text commands. Given the user ' +
     'command, your skill library, and your workflows, call exactly ONE tool: set_autonomy if ' +
     'they ask to change how much you ask permission, self_improve if they ask you to change ' +
-    'YOURSELF (your own code/behaviour/looks), run_workflow if it matches a saved workflow, ' +
-    'run_skill if it matches a taught skill, run_goal for a concrete one-off computer task, or ' +
-    'reply otherwise (use reply for questions, chit-chat, or anything about your memory/past ' +
-    'conversations — answer from YOUR MEMORY below). Prefer taught knowledge (workflow > ' +
-    'skill) over run_goal.\n\n' +
+    'YOURSELF (your own code/behaviour/looks), quick_action for the common instant tasks ' +
+    '(open an app, open a website, web search), run_workflow if it matches a saved workflow, ' +
+    'run_skill if it matches a taught skill, run_goal for a concrete multi-step computer task, ' +
+    'or reply otherwise (use reply for questions, chit-chat, or anything about your memory/past ' +
+    'conversations — answer from YOUR MEMORY below). ALWAYS prefer quick_action over run_goal ' +
+    'for opening apps/sites and searches — it is far faster. Prefer taught knowledge ' +
+    '(workflow > skill) over run_goal.\n\n' +
     'Skill library:\n' +
     skillsContext +
     '\n\nWorkflows:\n' +
@@ -394,6 +420,8 @@ async function routeCommand(transcript, skillsContext, workflowsContext) {
 
   if (call.name === 'run_skill') return { action: 'skill', skill_id: call.input.skill_id };
   if (call.name === 'run_workflow') return { action: 'workflow', workflow_id: call.input.workflow_id };
+  if (call.name === 'quick_action')
+    return { action: 'quick_action', kind: call.input.kind, target: call.input.target };
   if (call.name === 'run_goal') return { action: 'goal', goal: call.input.goal };
   if (call.name === 'self_improve') return { action: 'self_improve', request: call.input.request };
   if (call.name === 'set_autonomy') return { action: 'set_autonomy', enabled: Boolean(call.input.enabled) };

@@ -103,7 +103,7 @@ const getComputerToolType = () =>
 const getComputerBeta = () =>
   value('computerBeta', 'SA_COMPUTER_BETA', 'computer-use-2025-11-24');
 const getMaxSteps = () => Number(value('maxSteps', 'SA_MAX_STEPS', 40));
-const getActionDelayMs = () => Number(value('actionDelayMs', 'SA_ACTION_DELAY_MS', 350));
+const getActionDelayMs = () => Number(value('actionDelayMs', 'SA_ACTION_DELAY_MS', 220));
 const getTargetWidth = () => Number(value('targetWidth', 'SA_TARGET_WIDTH', 1280));
 const getConfirmEvery = () => {
   const v = value('confirmEvery', 'SA_CONFIRM_EVERY', false);

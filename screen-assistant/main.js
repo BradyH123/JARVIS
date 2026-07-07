@@ -37,6 +37,7 @@ const { WorkflowStore } = require('./lib/workflows');
 const claude = require('./lib/claude');
 const agent = require('./lib/agent');
 const executor = require('./lib/executor');
+const quickactions = require('./lib/quickactions');
 const improver = require('./lib/improver');
 const memory = require('./lib/memory');
 const { WatchBuffer } = require('./lib/monitor');
@@ -315,7 +316,8 @@ function registerIpc() {
     if (routed.action === 'reply' && routed.message) {
       memory.logTurn('assistant', routed.message, 'widget');
     } else if (routed.action !== 'reply') {
-      memory.logTurn('assistant', `(${routed.action}) ${routed.goal || routed.request || routed.skill_id || ''}`.trim(), 'widget');
+      const detail = routed.goal || routed.request || routed.target || routed.skill_id || '';
+      memory.logTurn('assistant', `(${routed.action}) ${detail}`.trim(), 'widget');
     }
     if (routed.action === 'skill') {
       const skill = store.get(routed.skill_id);
@@ -451,6 +453,28 @@ function registerIpc() {
     sessionAbort = true;
     resolveAllConfirms(false); // unblock any pending permission prompt as denied
     return { stopped: true };
+  });
+
+  // Fast path: instant open-app / open-url / web-search with no screenshot loop.
+  // Falls back to the full agent (via a returned flag) when unsupported.
+  ipcMain.handle('assistant:quick', async (_e, payload) => {
+    const send = (evt) => broadcast('agent:event', evt);
+    const label =
+      payload && payload.kind === 'open_app'
+        ? `Opening ${payload.target}`
+        : payload && payload.kind === 'web_search'
+        ? `Searching for ${payload.target}`
+        : `Opening ${payload && payload.target}`;
+    send({ type: 'started', goal: label });
+    const result = await quickactions.perform(payload || {});
+    if (result.ok) {
+      send({ type: 'done', message: result.text || 'Done.' });
+      send({ type: 'finished', status: 'done', message: result.text });
+      return { status: 'done', message: result.text };
+    }
+    // Unsupported (e.g. non-macOS): let the caller fall back to the agent.
+    send({ type: 'finished', status: 'fallback' });
+    return { status: 'fallback', message: result.error };
   });
 
   // --- Self-improvement: the assistant edits its own source code ---
