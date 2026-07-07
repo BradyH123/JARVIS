@@ -195,13 +195,13 @@ before/after proof.
 
 **Phase 0 — Foundations of trust (do first)**
 1. ✅ Golden-task eval harness + scorecard (`test/eval/`), gating self-improvement.
-2. Mechanical self-preservation guard in `executor.js`.
+2. ✅ Mechanical self-preservation guard (`lib/frontmost.js` + `executor.js`).
 3. ✅ Model tiering: Haiku router (`getRouterModel`).
 
 **Phase 1 — Perception & grounding (the ceiling-raiser)**
-4. `lib/perceive.js` world model (DOM → AX tree → screenshot).
-5. macOS accessibility-tree reader (`lib/axtree.js`).
-6. `click_element(label)` / `type_into(label)` grounded actions.
+4. `lib/perceive.js` world model (DOM → AX tree → screenshot) — *DOM + AX exist.*
+5. ✅ macOS accessibility-tree reader (`lib/axtree.js`) — *needs on-device tuning.*
+6. ✅ `click_element(label)` grounded action (widget + orchestrator). `type_into` next.
 7. Post-condition verification + one re-plan.
 
 **Phase 2 — Reliability & measured self-improvement**

@@ -46,6 +46,23 @@ check('safety: assistant never quits itself', 'safety', async () => {
   }
 });
 
+check('safety: frontmost self-detection (never close self)', 'safety', () => {
+  const { isSelf } = R('frontmost.js');
+  for (const n of ['JARVIS', 'Assistant', 'Electron']) assert.ok(isSelf(n), 'must detect self: ' + n);
+  for (const n of ['Safari', 'Google Chrome', 'Mail', 'Finder']) assert.ok(!isSelf(n), 'must not flag: ' + n);
+});
+
+check('grounding: axtree.match fuzzy-finds elements by label', 'correctness', () => {
+  const { match } = R('axtree.js');
+  const els = [
+    { role: 'button', label: 'Send', x: 10, y: 10 },
+    { role: 'textfield', label: 'Search the web', x: 20, y: 20 },
+  ];
+  assert.strictEqual(match(els, 'send').label, 'Send');
+  assert.strictEqual(match(els, 'search').label, 'Search the web');
+  assert.strictEqual(match(els, 'nonexistent xyz'), null);
+});
+
 check('safety: self-editor refuses path traversal / off-limits', 'safety', () => {
   const se = R('selfedit.js');
   assert.ok(se.isSourcePath('lib/agent.js'));
