@@ -177,6 +177,13 @@ await test('WatchBuffer respects maxFrames and recent()', async () => {
     // the prompt digest surfaces profile + recent conversation
     const ctx = memory.contextForPrompt();
     assert.ok(/teal/.test(ctx) && /weekends/.test(ctx), 'context digest includes memory');
+    // recall spans multiple days, not just today (previous-chat memory)
+    const older = path.join(vault, 'Conversations', '2020-01-01.md');
+    fs.writeFileSync(older, '# Conversation — 2020-01-01\n\n- **You**: remember the alpha launch\n');
+    assert.ok(
+      memory.recentConversation(50).some((l) => /alpha launch/.test(l)),
+      'recall reaches earlier days'
+    );
   });
 
   // --- quick actions (instant fast-path URL/app/search) ---
