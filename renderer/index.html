@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screen Assistant</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <h1>Screen Assistant</h1>
+      </div>
+      <div class="topbar-right">
+        <span class="status" id="config-status">checking…</span>
+        <button id="btn-settings" class="ghost gear" title="Settings">⚙</button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="record">Teach</button>
+      <button class="tab" data-tab="watch">Watch</button>
+      <button class="tab" data-tab="skills">Skills</button>
+      <button class="tab" data-tab="workflows">Workflows</button>
+      <button class="tab" data-tab="assistant">Assistant</button>
+    </nav>
+
+    <main>
+      <!-- TEACH -->
+      <section class="panel active" id="tab-record">
+        <div class="card">
+          <h2>Teach a new skill by demonstration</h2>
+          <p class="muted">
+            Press <kbd>Start</kbd> (or <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>),
+            perform the action on your screen, then <kbd>Stop</kbd>. The assistant captures
+            frames as you work and generalizes them into a reusable skill.
+          </p>
+
+          <div class="record-controls">
+            <button id="btn-record" class="primary">● Start recording</button>
+            <span id="record-meta" class="muted">idle</span>
+          </div>
+
+          <div id="frames-strip" class="frames-strip"></div>
+
+          <div id="name-block" class="name-block hidden">
+            <label>
+              Name this action
+              <input id="skill-name" type="text" placeholder="e.g. File my weekly status report" />
+            </label>
+            <label>
+              Note (optional) — anything the AI can't see
+              <textarea id="skill-note" rows="2" placeholder="e.g. Always CC my manager; the template lives in Drive."></textarea>
+            </label>
+            <button id="btn-save" class="primary">Save skill</button>
+            <span id="save-status" class="muted"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- WATCH (Phase 2: continuous private capture) -->
+      <section class="panel" id="tab-watch">
+        <div class="card">
+          <h2>Continuous watching <span class="muted">(private &amp; local)</span></h2>
+          <p class="muted">
+            When on, the assistant keeps a short rolling buffer of recent screen frames
+            <strong>in memory only</strong> — nothing is written to disk, and nothing leaves your
+            machine unless you turn it into a skill. Off by default. Pause any time.
+          </p>
+
+          <div class="watch-controls">
+            <button id="watch-toggle" class="primary">▶ Start watching</button>
+            <button id="watch-pause" class="ghost" disabled>Pause</button>
+            <span id="watch-meta" class="muted">off</span>
+          </div>
+
+          <div class="watch-preview">
+            <img id="watch-thumb" alt="latest frame" />
+            <p class="muted tiny" id="watch-empty">No frames buffered yet.</p>
+          </div>
+
+          <div class="watch-teach">
+            <p class="muted">
+              Did something worth saving? Capture what you <em>just</em> did from the buffer:
+            </p>
+            <label>
+              How many recent frames?
+              <input id="watch-frames-n" type="number" min="1" max="40" value="12" />
+            </label>
+            <button id="watch-teach-btn">Turn recent activity into a skill →</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SKILLS -->
+      <section class="panel" id="tab-skills">
+        <div class="card">
+          <h2>Skill library</h2>
+          <p class="muted">Everything the assistant has learned. Click a skill to expand.</p>
+          <div id="skills-list" class="skills-list"></div>
+        </div>
+      </section>
+
+      <!-- WORKFLOWS (Phase 3: compose skills into named plans) -->
+      <section class="panel" id="tab-workflows">
+        <div class="card">
+          <h2>Workflows <span class="muted">— chain skills into a named plan</span></h2>
+          <p class="muted">
+            Compose taught skills and one-off goals into an ordered routine you can run (or say)
+            with one phrase. Each step runs through the same approval-gated engine.
+          </p>
+
+          <div class="wf-builder">
+            <label>
+              Workflow name
+              <input id="wf-name" type="text" placeholder="e.g. Monday morning startup" />
+            </label>
+            <label>
+              Description (optional)
+              <input id="wf-desc" type="text" placeholder="What this routine accomplishes" />
+            </label>
+
+            <div class="wf-add-row">
+              <select id="wf-skill-select"><option value="">— pick a taught skill —</option></select>
+              <button id="wf-add-skill">+ Add skill step</button>
+            </div>
+            <div class="wf-add-row">
+              <input id="wf-goal-input" type="text" placeholder="…or type a one-off goal step" />
+              <button id="wf-add-goal">+ Add goal step</button>
+            </div>
+
+            <ol id="wf-steps" class="wf-steps"></ol>
+            <button id="wf-save" class="primary">Save workflow</button>
+            <span id="wf-save-status" class="muted"></span>
+          </div>
+
+          <hr class="wf-sep" />
+          <h3>Saved workflows</h3>
+          <div id="wf-list" class="skills-list"></div>
+        </div>
+      </section>
+
+      <!-- ASSISTANT -->
+      <section class="panel" id="tab-assistant">
+        <div class="card chat-card">
+          <h2>Talk to your assistant</h2>
+          <p class="muted">
+            Ask for a skill by name or describe what you want. The assistant proposes a plan;
+            <strong>nothing runs on your machine without your approval.</strong>
+          </p>
+          <div id="chat-log" class="chat-log"></div>
+          <div class="chat-input">
+            <button id="btn-mic" class="ghost mic" title="Hold-to-talk / click to toggle voice">🎙</button>
+            <input id="chat-text" type="text" placeholder="Speak or type — e.g. File my weekly report" />
+            <button id="btn-send" class="primary">Send</button>
+          </div>
+          <p class="muted tiny" id="voice-hint">
+            🎙 Voice control: click the mic and speak a command. A matching skill runs, or a one-off
+            goal is carried out — spoken intent → action, no keyboard needed.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <!-- PLAN APPROVAL MODAL -->
+    <div id="plan-modal" class="modal hidden">
+      <div class="modal-body">
+        <h3 id="plan-title">Proposed plan</h3>
+        <div id="plan-content"></div>
+        <div class="modal-actions">
+          <button id="plan-cancel" class="ghost">Cancel</button>
+          <button id="plan-approve" class="primary">Approve &amp; run</button>
+        </div>
+        <p class="muted tiny">
+          Approving lets the assistant <strong>take control of your mouse and keyboard</strong> to
+          carry out the plan. You can stop it any time with the STOP button or
+          <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>.
+        </p>
+      </div>
+    </div>
+
+    <!-- ONBOARDING (first run) -->
+    <div id="onboard-modal" class="modal hidden">
+      <div class="modal-body">
+        <h3>Welcome to Screen Assistant 👁</h3>
+        <p class="muted">
+          A desktop assistant that learns tasks by watching you, then does them itself — by voice or
+          text. It can control your mouse and keyboard, so it always asks before anything risky, and
+          you can stop it instantly with <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>.
+        </p>
+
+        <h4>1 · Add your Anthropic API key</h4>
+        <p class="muted tiny">Get one at console.anthropic.com. Stored encrypted on this device.</p>
+        <div class="chat-input">
+          <input id="ob-key" type="password" placeholder="sk-ant-…" />
+          <button id="ob-test" class="ghost">Test</button>
+        </div>
+        <p class="muted tiny" id="ob-key-status"></p>
+
+        <h4>2 · Grant OS permissions</h4>
+        <p class="muted tiny" id="ob-perms">
+          Screen Recording (to watch) and Accessibility (to control). Grant them when your OS prompts,
+          then re-check below.
+        </p>
+        <div class="chat-input">
+          <button id="ob-recheck" class="ghost">Re-check control</button>
+          <span id="ob-control" class="muted"></span>
+        </div>
+
+        <div class="modal-actions">
+          <button id="ob-start" class="primary" disabled>Start using Screen Assistant</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="modal hidden">
+      <div class="modal-body">
+        <h3>Settings</h3>
+
+        <label>
+          Anthropic API key
+          <input id="set-key" type="password" placeholder="sk-ant-… (leave blank to keep current)" />
+        </label>
+        <p class="muted tiny" id="set-key-status"></p>
+
+        <label>
+          Model (teach / chat / plan / routing)
+          <input id="set-model" type="text" placeholder="claude-sonnet-5" />
+        </label>
+        <label>
+          Computer-use model (autonomous control)
+          <input id="set-cu-model" type="text" placeholder="defaults to the model above" />
+        </label>
+        <label>
+          Max steps per run
+          <input id="set-maxsteps" type="number" min="1" max="200" />
+        </label>
+        <label class="check">
+          <input id="set-paranoid" type="checkbox" />
+          Confirm before <em>every</em> action (paranoid mode)
+        </label>
+        <label class="check">
+          <input id="set-fullcontrol" type="checkbox" />
+          <span><strong>Full Control</strong> — let it act without asking for approval.
+          The <strong>STOP</strong> kill switch (Cmd/Ctrl+Shift+X) still works.</span>
+        </label>
+
+        <div class="modal-actions">
+          <button id="set-test" class="ghost">Test key</button>
+          <button id="set-cancel" class="ghost">Close</button>
+          <button id="set-save" class="primary">Save</button>
+        </div>
+        <p class="muted tiny" id="set-storage"></p>
+      </div>
+    </div>
+
+    <!-- LIVE RUN OVERLAY -->
+    <div id="run-overlay" class="run-overlay hidden">
+      <div class="run-head">
+        <span class="run-status" id="run-status">● running</span>
+        <span id="run-goal" class="muted"></span>
+        <button id="run-stop" class="danger stop-btn">■ STOP (Ctrl/Cmd+Shift+X)</button>
+      </div>
+      <div id="run-log" class="run-log"></div>
+      <div id="confirm-box" class="confirm-box hidden">
+        <div class="confirm-msg" id="confirm-msg"></div>
+        <div class="confirm-actions">
+          <button id="confirm-deny" class="ghost">Deny</button>
+          <button id="confirm-approve" class="danger">Approve this action</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

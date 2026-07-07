@@ -1,0 +1,8 @@
+node_modules/
+.env
+dist/
+out/
+*.log
+.DS_Store
+scripts/preview-shots/
+.selfedit-backups/

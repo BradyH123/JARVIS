@@ -1,0 +1,74 @@
+{
+  "name": "jarvis",
+  "version": "0.1.0",
+  "description": "JARVIS — an AI desktop assistant that lives on your Mac: watches the screen, learns skills by demonstration, controls the computer, edits its own code, and remembers you across sessions.",
+  "main": "main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node test/smoke.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@nut-tree-fork/nut-js": "^4.2.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.jarvis.app",
+    "productName": "JARVIS",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "files": [
+      "main.js",
+      "preload.js",
+      "lib/**/*",
+      "renderer/**/*",
+      "!**/*.md",
+      "!test/**/*"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Voice control lets you speak commands to the assistant.",
+        "NSScreenCaptureUsageDescription": "The assistant watches the screen to learn and perform tasks.",
+        "NSAppleEventsUsageDescription": "The assistant controls other apps to carry out your tasks."
+      }
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
