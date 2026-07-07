@@ -306,6 +306,19 @@ async function runCommand(text) {
   // Fast path: screen reads/summaries go STRAIGHT to the vision read, bypassing
   // the intent router (which sometimes replied "I'll do it" without an answer).
   // This is why "summarize this tab" said done but never reported back.
+  // Full data harvest — pull ALL data from the page(s). Checked before the
+  // summarize fast-path so "pull all the data" doesn't get read as a summary.
+  if (
+    api.harvest &&
+    /(harvest|scrape|grab|pull|extract|get|download)\b.*(all|every|everything|the data|all data|the page|this (site|page|website)|tables?|links?|the html|the code)/i.test(text) &&
+    !/summari[sz]e/i.test(text)
+  ) {
+    const allTabs = /(all|every|each)\s+(my\s+)?(tabs?|pages?|sites?|windows?)/i.test(text);
+    log('info', allTabs ? '📥 Pulling all data from every open tab…' : '📥 Pulling all data from this page…');
+    say(allTabs ? 'Pulling all the data from every open tab.' : 'Pulling all the data from this page.', { interrupt: true });
+    await api.harvest(allTabs);
+    return;
+  }
   if (
     api.lookAtScreen &&
     /(summari[sz]e|what does (this|it) (say|mean|show)|what('| i)?s on (my|the) screen|what is on (my|the) screen|read (this|it|the|my screen)|look at (this|it|my screen|the screen|the tab|this tab)|what am i (looking at|seeing)|describe (this|my screen|the screen)|this (page|website|site|tab|article)|pull (the|this).*(code|page|html|dom)|(map|inspect).*(interface|page|site|website)|(interface|dom|source) of (this|the))/i.test(

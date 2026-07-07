@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('assistant', {
   execute: (payload) => ipcRenderer.invoke('assistant:execute', payload),
   quick: (payload) => ipcRenderer.invoke('assistant:quick', payload),
   lookAtScreen: (question) => ipcRenderer.invoke('assistant:look', question),
+  harvest: (allTabs) => ipcRenderer.invoke('webpage:harvest', allTabs),
   runCommand: (payload) => ipcRenderer.invoke('assistant:shell', payload),
   transcribe: (audio) => ipcRenderer.invoke('voice:transcribe', audio),
   stop: () => ipcRenderer.invoke('assistant:stop'),
