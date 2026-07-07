@@ -189,6 +189,20 @@ await test('WatchBuffer respects maxFrames and recent()', async () => {
     assert.strictEqual(quick.normalizeUrl(''), null);
   });
 
+  // --- Claude Code self-improvement engine (pure helpers) ---
+  const claudecode = require('../lib/claudecode');
+  await test('claudecode.describeTool summarizes edits/bash, isAvailable is boolean', () => {
+    assert.strictEqual(
+      claudecode.describeTool({ name: 'Edit', input: { file_path: '/repo/lib/agent.js' } }),
+      'Edit agent.js'
+    );
+    assert.strictEqual(
+      claudecode.describeTool({ name: 'Bash', input: { command: 'node test/smoke.js' } }),
+      'run: node test/smoke.js'
+    );
+    assert.strictEqual(typeof claudecode.isAvailable(), 'boolean');
+  });
+
   console.log(`\n${passed} test(s) passed.`);
 }
 

@@ -157,7 +157,8 @@ jarvis/  (repo root)
 │   ├── quickactions.js instant fast-path: open app / site / search (no screenshots)
 │   ├── agent.js       computer-use agentic loop + approval gate — the "brain"
 │   ├── selfedit.js    sandboxed self-editing engine (read/write/validate/revert)
-│   ├── improver.js    self-improvement loop — the assistant rewrites its own code
+│   ├── improver.js    built-in self-improvement loop (fallback editor)
+│   ├── claudecode.js  self-improvement via the Claude Code CLI on its own repo
 │   ├── memory.js      Obsidian-style long-term memory vault
 │   └── monitor.js     Phase 2 in-memory watch buffer — continuous perception
 └── renderer/          Teach / Watch / Skills / Assistant tabs + run overlay + voice
@@ -213,6 +214,31 @@ A validated change is on disk but not yet running — **reload to apply**: say
 *"reload yourself"*, or click **Reload** in the prompt that appears. Turn on
 **Full Control** (Settings) if you want it to act on the self-edit without the
 per-step approval prompts (STOP still works).
+
+### Powered by Claude Code (when available)
+
+If the **Claude Code CLI** (`claude`) is installed and authenticated on your
+machine, JARVIS uses it as his self-improvement engine instead of the built-in
+editor — he shells out to `claude` headless, pointed at his **own repository**,
+so he gets full agentic coding: multi-file edits, running the tests, git, the
+works. This is the most capable mode and is preferred automatically
+(`lib/claudecode.js`); the built-in `lib/improver.js` is the fallback when the
+CLI isn't present. Runs as:
+
+```
+claude -p "<task>" --output-format stream-json --verbose \
+       --dangerously-skip-permissions --model <model>
+```
+
+in the repo root, streaming its edits/commands to the widget. Because this drives
+real agentic coding on his own source, it only works when JARVIS is launched
+from a git checkout (`npm start`), not a packaged build. STOP kills the run.
+
+### Self-update
+
+Say *"update yourself"* and JARVIS runs `git pull --ff-only` on his own repo to
+fetch the latest code, then you *"reload yourself"* to run it. So he can both
+**improve** himself (write new code) and **update** himself (pull existing code).
 
 > ⚠️ Self-editing is powerful. The guardrails (sandboxed paths, validation,
 > auto-revert, backups) make it *safe to try*, but review changes you don't

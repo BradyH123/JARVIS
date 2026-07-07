@@ -37,9 +37,11 @@ contextBridge.exposeInMainWorld('assistant', {
   confirm: (payload) => ipcRenderer.invoke('assistant:confirm', payload),
   onAgentEvent: (cb) => ipcRenderer.on('agent:event', (_e, evt) => cb(evt)),
 
-  // Self-improvement — the assistant edits its own code, then relaunches to apply.
+  // Self-improvement — the assistant edits its own code (via Claude Code when
+  // available), then relaunches to apply. selfUpdate git-pulls the latest.
   improve: {
     run: (goal) => ipcRenderer.invoke('improve:run', goal),
+    selfUpdate: () => ipcRenderer.invoke('improve:selfupdate'),
     relaunch: () => ipcRenderer.invoke('improve:relaunch'),
   },
   onImproveEvent: (cb) => ipcRenderer.on('improve:event', (_e, evt) => cb(evt)),
