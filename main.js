@@ -46,6 +46,7 @@ const webpage = require('./lib/webpage');
 const crawler = require('./lib/crawler');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
+const sweep = require('./lib/sweep');
 const memory = require('./lib/memory');
 const { WatchBuffer } = require('./lib/monitor');
 const { execFile } = require('child_process');
@@ -690,6 +691,47 @@ function registerIpc() {
     }
   });
 
+  // Filesystem sweep: index the user's files/apps so find/open is instant.
+  ipcMain.handle('sweep:run', async (_e, payload) => {
+    if (sessionRunning || improveRunning) return { status: 'busy' };
+    const send = (evt) => broadcast('agent:event', evt);
+    sessionAbort = false;
+    sessionRunning = true;
+    send({ type: 'started', goal: payload && payload.everything ? 'Full sweep of my computer' : 'Indexing my files' });
+    const t0 = Date.now();
+    try {
+      const list = await sweep.sweep({
+        everything: payload && payload.everything,
+        onProgress: (p) => send({ type: 'log', text: `indexed ${p.found} files… ${p.current}`.slice(0, 200) }),
+        shouldAbort: () => sessionAbort,
+      });
+      const s = sweep.stats();
+      const secs = Math.round((Date.now() - t0) / 1000);
+      const msg = `Indexed ${list.length} files/apps in ${secs}s — I can now find and open them instantly.`;
+      telemetry.record({ kind: 'sweep', goal: 'index', status: 'done', steps: list.length, durationMs: Date.now() - t0 });
+      memory.logTurn('assistant', `(swept the computer: ${list.length} files indexed)`, 'widget');
+      send({ type: 'done', message: msg });
+      send({ type: 'finished', status: 'done', message: msg });
+      return { status: 'done', total: list.length, stats: s };
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    } finally {
+      sessionRunning = false;
+    }
+  });
+  ipcMain.handle('sweep:search', async (_e, query) => sweep.search(String(query || ''), 25));
+  ipcMain.handle('sweep:stats', async () => sweep.stats());
+  // Open an indexed file/app (only paths that exist).
+  ipcMain.handle('sweep:open', async (_e, filePath) => {
+    const p = String(filePath || '');
+    if (!p || !fs.existsSync(p)) return { ok: false, error: 'File not found.' };
+    await shell.openPath(p);
+    memory.logTurn('assistant', `(opened) ${p}`, 'widget');
+    return { ok: true };
+  });
+
   // DEEP crawl: follow links from the current page (or a URL) several levels deep
   // and harvest every page, saved to a per-crawl folder. Polite + abortable.
   ipcMain.handle('webpage:crawl', async (_e, payload) => {
@@ -1179,6 +1221,7 @@ app.whenReady().then(() => {
   }
   memory.init(vaultDir);
   telemetry.init(app.getPath('userData'));
+  sweep.init(path.join(app.getPath('userData'), 'index'));
   watch = new WatchBuffer({
     capture: captureSized,
     intervalMs: config.getWatchIntervalMs(),

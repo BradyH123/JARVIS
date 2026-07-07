@@ -36,6 +36,12 @@ contextBridge.exposeInMainWorld('assistant', {
   lookAtScreen: (question) => ipcRenderer.invoke('assistant:look', question),
   harvest: (allTabs) => ipcRenderer.invoke('webpage:harvest', allTabs),
   crawl: (opts) => ipcRenderer.invoke('webpage:crawl', opts),
+  sweep: {
+    run: (opts) => ipcRenderer.invoke('sweep:run', opts),
+    search: (query) => ipcRenderer.invoke('sweep:search', query),
+    stats: () => ipcRenderer.invoke('sweep:stats'),
+    open: (filePath) => ipcRenderer.invoke('sweep:open', filePath),
+  },
   runCommand: (payload) => ipcRenderer.invoke('assistant:shell', payload),
   transcribe: (audio) => ipcRenderer.invoke('voice:transcribe', audio),
   stop: () => ipcRenderer.invoke('assistant:stop'),

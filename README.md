@@ -166,6 +166,7 @@ jarvis/  (repo root)
 │   ├── quickactions.js instant fast-path: open app / site / search (no screenshots)
 │   ├── webpage.js     reads the live browser DOM (page text + interface map)
 │   ├── crawler.js     deep site crawler (follows links, robots-aware, page-capped)
+│   ├── sweep.js       filesystem index (find/open files & apps instantly)
 │   ├── shell.js       terminal capability: run real shell commands (guarded)
 │   ├── agent.js       computer-use agentic loop + approval gate — the "brain"
 │   ├── selfedit.js    sandboxed self-editing engine (read/write/validate/revert)
