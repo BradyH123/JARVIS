@@ -308,12 +308,12 @@ async function runCommand(text) {
   // This is why "summarize this tab" said done but never reported back.
   if (
     api.lookAtScreen &&
-    /(summari[sz]e|what does (this|it) (say|mean|show)|what('| i)?s on (my|the) screen|what is on (my|the) screen|read (this|it|the|my screen)|look at (this|it|my screen|the screen|the tab|this tab)|what am i (looking at|seeing)|describe (this|my screen|the screen))/i.test(
+    /(summari[sz]e|what does (this|it) (say|mean|show)|what('| i)?s on (my|the) screen|what is on (my|the) screen|read (this|it|the|my screen)|look at (this|it|my screen|the screen|the tab|this tab)|what am i (looking at|seeing)|describe (this|my screen|the screen)|this (page|website|site|tab|article)|pull (the|this).*(code|page|html|dom)|(map|inspect).*(interface|page|site|website)|(interface|dom|source) of (this|the))/i.test(
       text
     )
   ) {
-    log('info', '👁 Looking at your screen…');
-    say('Looking at your screen.', { interrupt: true });
+    log('info', '📄 Reading the live page…');
+    say('Reading the page.', { interrupt: true });
     await api.lookAtScreen(text);
     return;
   }

@@ -41,6 +41,7 @@ const quickactions = require('./lib/quickactions');
 const improver = require('./lib/improver');
 const claudecode = require('./lib/claudecode');
 const terminal = require('./lib/shell');
+const webpage = require('./lib/webpage');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
 const memory = require('./lib/memory');
@@ -584,15 +585,29 @@ function registerIpc() {
     const send = (evt) => broadcast('agent:event', evt);
     const q = String(question || '').trim() || 'Summarize what is on my screen.';
     send({ type: 'started', goal: 'Looking at your screen' });
-    send({ type: 'action', detail: '👁 reading the screen…' });
     const lookStart = Date.now();
     try {
-      const shot = await captureFrame();
-      let answer = await claude.describeScreen(q, shot);
+      let answer;
+      // Prefer the ACTUAL page: pull the live DOM (text + interface map) from the
+      // active browser tab — far richer than a screenshot. Fall back to vision.
+      const page = await webpage.readActiveTab().catch(() => ({ ok: false }));
+      if (page.ok && (page.text || (page.interface && page.interface.length))) {
+        send({ type: 'action', detail: `📄 read the live page code — ${page.browser}: ${page.title || page.url}` });
+        answer = await claude.answerFromPage(q, page);
+      } else {
+        send({ type: 'action', detail: '👁 reading the screen…' });
+        const shot = await captureFrame();
+        answer = await claude.describeScreen(q, shot);
+        if (page.needsPermission) {
+          answer =
+            (answer || '') +
+            `\n\n(For full page code + interface mapping, ${page.error})`;
+        }
+      }
       if (!answer || !answer.trim()) {
         answer =
-          "I couldn't read anything from the screen. Make sure the tab or window is visible " +
-          '(and that Screen Recording permission is granted in System Settings).';
+          "I couldn't read the page or screen. Make sure the tab is visible (and Screen " +
+          'Recording permission is granted in System Settings).';
       }
       memory.logTurn('user', q, 'widget');
       memory.logTurn('assistant', answer, 'widget');
