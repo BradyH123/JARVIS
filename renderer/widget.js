@@ -306,6 +306,30 @@ async function runCommand(text) {
   // Fast path: screen reads/summaries go STRAIGHT to the vision read, bypassing
   // the intent router (which sometimes replied "I'll do it" without an answer).
   // This is why "summarize this tab" said done but never reported back.
+  // DEEP crawl — follow links across the site. Checked before single-page harvest.
+  if (
+    api.crawl &&
+    /(crawl|deep|go deep|follow (the |all )?links|whole (site|website)|entire (site|website)|every page|all the pages|as (deep|much) as (possible|you can))/i.test(text)
+  ) {
+    // Depth from phrasing: "very deep" → deeper; an explicit "N levels/pages".
+    let depth = 2;
+    let maxPages = 50;
+    if (/very deep|as deep as|really deep|super deep|max/i.test(text)) {
+      depth = 4;
+      maxPages = 200;
+    } else if (/\bdeep\b/i.test(text)) {
+      depth = 3;
+      maxPages = 100;
+    }
+    const dm = /(\d+)\s*(levels?|deep)/i.exec(text);
+    if (dm) depth = Math.min(parseInt(dm[1], 10) || depth, 5);
+    const pm = /(\d+)\s*pages?/i.exec(text);
+    if (pm) maxPages = Math.min(parseInt(pm[1], 10) || maxPages, 500);
+    log('info', `🕸 Deep crawl (depth ${depth}, up to ${maxPages} pages)…`);
+    say('Starting a deep crawl. This can take a while — say stop to end it.', { interrupt: true });
+    await api.crawl({ depth, maxPages });
+    return;
+  }
   // Full data harvest — pull ALL data from the page(s). Checked before the
   // summarize fast-path so "pull all the data" doesn't get read as a summary.
   if (
