@@ -275,40 +275,81 @@ cmd.addEventListener('keydown', (e) => {
   }
 });
 
-/* ---------- voice ---------- */
+/* ---------- voice (click-to-toggle, always-on listening) ---------- */
 const micBtn = document.getElementById('wx-mic');
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
-let listening = false;
+let listening = false; // is the mic armed (user toggled it on)?
 if (!SR) {
   micBtn.disabled = true;
   micBtn.title = 'Speech not available in this build — type instead';
 } else {
   recognition = new SR();
   recognition.lang = 'en-US';
+  recognition.continuous = true; // keep listening across pauses
   recognition.interimResults = false;
+
   recognition.onresult = (e) => {
-    const t = e.results[0][0].transcript.trim();
-    runCommand(t);
+    // Ignore input while JARVIS is speaking — otherwise the mic hears his own
+    // voice and loops. (STOP is always available via button / global shortcut.)
+    if (speech.synth && speech.synth.speaking) return;
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (!e.results[i].isFinal) continue;
+      const t = e.results[i][0].transcript.trim();
+      if (t) runCommand(t);
+    }
   };
+  // The engine still auto-stops on long silence even in continuous mode —
+  // if the user hasn't toggled off, restart so it truly always listens.
   recognition.onend = () => {
-    listening = false;
-    micBtn.classList.remove('listening');
-    if (current === 'listening') setState('idle');
+    if (listening) {
+      try {
+        recognition.start();
+      } catch {
+        /* will retry on next end */
+      }
+    } else {
+      micBtn.classList.remove('listening');
+      micBtn.textContent = '🎙';
+      if (current === 'listening') setState('idle');
+    }
   };
-  const startVoice = () => {
-    if (listening) return recognition.stop();
+  recognition.onerror = (ev) => {
+    // 'no-speech'/'aborted' are benign; onend handles the restart.
+    if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+      listening = false;
+      micBtn.classList.remove('listening');
+      say('I need microphone permission. Enable it in System Settings.', { interrupt: true });
+    }
+  };
+
+  function startListening() {
+    if (listening) return;
+    listening = true;
+    micBtn.classList.add('listening');
+    micBtn.textContent = '● live';
     try {
       recognition.start();
-      listening = true;
-      micBtn.classList.add('listening');
-      setState('listening');
     } catch {
       /* already started */
     }
-  };
-  micBtn.addEventListener('click', startVoice);
-  api.onWidgetSummon(() => startVoice());
+    setState('listening');
+    say('Listening.', { interrupt: true });
+  }
+  function stopListening() {
+    listening = false;
+    micBtn.classList.remove('listening');
+    micBtn.textContent = '🎙';
+    try {
+      recognition.stop();
+    } catch {
+      /* ignore */
+    }
+    if (current === 'listening') setState('idle');
+  }
+
+  micBtn.addEventListener('click', () => (listening ? stopListening() : startListening()));
+  api.onWidgetSummon(() => startListening());
 }
 
 /* ---------- approval gate ---------- */
