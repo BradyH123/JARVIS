@@ -47,6 +47,7 @@ async function openSettings() {
     s.computerUseModel && s.computerUseModel !== s.model ? s.computerUseModel : '';
   document.getElementById('set-maxsteps').value = s.maxSteps || 40;
   document.getElementById('set-paranoid').checked = Boolean(s.confirmEvery);
+  document.getElementById('set-fullcontrol').checked = Boolean(s.fullControl);
   const modes = {
     encrypted: '🔒 key stored encrypted (OS keychain)',
     plaintext: '⚠ key stored unencrypted (no OS keychain available)',
@@ -67,6 +68,7 @@ document.getElementById('set-save').addEventListener('click', async () => {
     computerUseModel: document.getElementById('set-cu-model').value.trim(),
     maxSteps: Number(document.getElementById('set-maxsteps').value) || 40,
     confirmEvery: document.getElementById('set-paranoid').checked,
+    fullControl: document.getElementById('set-fullcontrol').checked,
   };
   const key = document.getElementById('set-key').value.trim();
   if (key) patch.apiKey = key;

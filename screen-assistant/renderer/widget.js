@@ -11,6 +11,42 @@ const subEl = document.getElementById('wx-sub');
 const feed = document.getElementById('wx-feed');
 const stopBtn = document.getElementById('wx-stop');
 
+/* ---------- voice output (JARVIS speaks) ---------- */
+const speech = {
+  on: true,
+  voice: null,
+  synth: window.speechSynthesis || null,
+};
+function pickVoice() {
+  if (!speech.synth) return;
+  const voices = speech.synth.getVoices();
+  if (!voices.length) return;
+  // Prefer a calm, ideally British male voice for the JARVIS feel.
+  const prefer = ['Daniel', 'Arthur', 'Oliver', 'Google UK English Male', 'Rishi'];
+  speech.voice =
+    prefer.map((n) => voices.find((v) => v.name.includes(n))).find(Boolean) ||
+    voices.find((v) => /en[-_]GB/i.test(v.lang)) ||
+    voices.find((v) => /^en/i.test(v.lang)) ||
+    voices[0];
+}
+if (speech.synth) {
+  pickVoice();
+  speech.synth.onvoiceschanged = pickVoice;
+}
+let lastSpoken = '';
+function say(text, { interrupt = false } = {}) {
+  if (!speech.on || !speech.synth || !text) return;
+  const clean = String(text).replace(/[🧠➤⏸✓✗●■◇⛓]/g, '').trim();
+  if (!clean || clean === lastSpoken) return;
+  lastSpoken = clean;
+  if (interrupt) speech.synth.cancel();
+  const u = new SpeechSynthesisUtterance(clean);
+  if (speech.voice) u.voice = speech.voice;
+  u.rate = 1.02;
+  u.pitch = 0.9;
+  speech.synth.speak(u);
+}
+
 const STATE = {
   idle: { color: '#3aa0ff', label: 'READY', state: 'Standing by', sub: 'Say a command or type below' },
   listening: { color: '#22d3ee', label: 'LISTEN', state: 'Listening…', sub: 'Speak your command' },
@@ -209,11 +245,13 @@ async function runCommand(text) {
       await api.execute({ goal: routed.goal });
     } else {
       log('think', routed.message || '(no reply)');
+      say(routed.message || '');
       setState('idle');
     }
   } catch (e) {
     if (/API key/i.test(e.message || '')) {
       log('warn', 'No API key yet — opening the workspace so you can add one.');
+      say('You need to add your A P I key first. Opening settings.', { interrupt: true });
       setState('idle', 'Add your key in Settings (⚙), then try again');
       api.openDashboard();
     } else {
@@ -305,18 +343,22 @@ api.onAgentEvent((evt) => {
       clearFeed();
       setState('running', evt.goal || '');
       log('info', 'Starting: ' + (evt.goal || ''));
+      say('On it. ' + (evt.goal || ''), { interrupt: true });
       break;
     case 'thinking':
       log('think', '🧠 ' + evt.text);
+      say(evt.text); // narrate the model's reasoning
       break;
     case 'action':
       log('action', '➤ ' + (evt.detail || evt.action));
       break;
     case 'step-started':
       log('info', `▸ Step ${evt.index + 1}/${evt.total}: ${evt.label}`);
+      say(`Step ${evt.index + 1}: ${evt.label}`);
       break;
     case 'permission':
       log('perm', '⏸ ' + (evt.summary || 'needs approval'));
+      say('I need your approval to ' + (evt.summary || 'continue'), { interrupt: true });
       break;
     case 'confirm-request':
       showConfirm(evt);
@@ -328,14 +370,17 @@ api.onAgentEvent((evt) => {
     case 'abort-requested':
     case 'aborted':
       log('warn', 'Stopped.');
+      say('Stopped.', { interrupt: true });
       setState('idle');
       break;
     case 'error':
       log('error', evt.message || 'Error');
+      say('Sorry, I hit an error.', { interrupt: true });
       setState('error');
       break;
     case 'done':
       if (evt.message) log('info', '✓ ' + evt.message);
+      say(evt.message || 'Done.');
       setState('done');
       setTimeout(() => current === 'done' && setState('idle'), 4000);
       break;
@@ -354,6 +399,25 @@ api.onAgentEvent((evt) => {
 });
 
 setState('idle');
+
+/* ---------- voice mute toggle + greeting ---------- */
+const voiceBtn = document.getElementById('wx-voice');
+if (voiceBtn) {
+  if (!speech.synth) {
+    voiceBtn.disabled = true;
+    voiceBtn.textContent = '🔇';
+    voiceBtn.title = 'Speech synthesis not available in this build';
+  } else {
+    voiceBtn.addEventListener('click', () => {
+      speech.on = !speech.on;
+      voiceBtn.textContent = speech.on ? '🔊' : '🔇';
+      if (!speech.on) speech.synth.cancel();
+      else say('Voice on.', { interrupt: true });
+    });
+  }
+}
+// Greet once, after voices have had a moment to load.
+if (speech.synth) setTimeout(() => say('Assistant online. Ready when you are.'), 800);
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)

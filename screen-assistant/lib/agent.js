@@ -94,7 +94,10 @@ async function runSession(opts) {
   const BETA_FLAG = config.getComputerBeta();
   const MAX_STEPS = config.getMaxSteps();
   const TARGET_WIDTH = config.getTargetWidth();
-  const CONFIRM_EVERY = config.getConfirmEvery();
+  const FULL_CONTROL = config.getFullControl();
+  // In Full Control mode the per-action approval prompts are suppressed (the
+  // STOP kill switch still applies); otherwise paranoid mode can force one.
+  const CONFIRM_EVERY = FULL_CONTROL ? false : config.getConfirmEvery();
   const KEEP_RECENT_IMAGES = config.getKeepImages();
 
   // First screenshot establishes the coordinate scale.
@@ -203,7 +206,10 @@ async function runSession(opts) {
       if (tu.name === 'ask_permission') {
         const inp = tu.input || {};
         onEvent({ type: 'permission', summary: inp.summary || '', risk: inp.risk || 'medium' });
-        const approved = await confirm({ summary: inp.summary || '', risk: inp.risk || 'medium' });
+        // Full Control auto-approves (STOP still interrupts between steps).
+        const approved = FULL_CONTROL
+          ? true
+          : await confirm({ summary: inp.summary || '', risk: inp.risk || 'medium' });
         onEvent({ type: 'permission-result', approved });
         toolResults.push({
           type: 'tool_result',
@@ -230,8 +236,8 @@ async function runSession(opts) {
       onEvent({ type: 'action', action: action.action, detail: describe(action) });
 
       // Heuristic/paranoid backstop: confirm before executing if the action is
-      // clearly destructive or if paranoid mode is on.
-      if (action.action !== 'screenshot' && (CONFIRM_EVERY || looksRisky(action))) {
+      // clearly destructive or if paranoid mode is on. Suppressed in Full Control.
+      if (!FULL_CONTROL && action.action !== 'screenshot' && (CONFIRM_EVERY || looksRisky(action))) {
         const summary = `About to ${describe(action)}`;
         onEvent({ type: 'permission', summary, risk: looksRisky(action) ? 'high' : 'medium' });
         const approved = await confirm({ summary, risk: looksRisky(action) ? 'high' : 'medium' });

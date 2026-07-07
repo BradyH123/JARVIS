@@ -99,14 +99,20 @@ const getModel = () => value('model', 'ANTHROPIC_MODEL', 'claude-sonnet-5');
 const getComputerUseModel = () =>
   value('computerUseModel', 'SA_COMPUTER_USE_MODEL', getModel());
 const getComputerToolType = () =>
-  value('computerToolType', 'SA_COMPUTER_TOOL_TYPE', 'computer_20250124');
+  value('computerToolType', 'SA_COMPUTER_TOOL_TYPE', 'computer_20251124');
 const getComputerBeta = () =>
-  value('computerBeta', 'SA_COMPUTER_BETA', 'computer-use-2025-01-24');
+  value('computerBeta', 'SA_COMPUTER_BETA', 'computer-use-2025-11-24');
 const getMaxSteps = () => Number(value('maxSteps', 'SA_MAX_STEPS', 40));
 const getActionDelayMs = () => Number(value('actionDelayMs', 'SA_ACTION_DELAY_MS', 350));
 const getTargetWidth = () => Number(value('targetWidth', 'SA_TARGET_WIDTH', 1280));
 const getConfirmEvery = () => {
   const v = value('confirmEvery', 'SA_CONFIRM_EVERY', false);
+  return v === true || /^(1|true|yes)$/i.test(String(v));
+};
+// Full Control: skip per-action approval prompts entirely (the STOP kill switch
+// still always works). Off by default — the user opts in.
+const getFullControl = () => {
+  const v = value('fullControl', 'SA_FULL_CONTROL', false);
   return v === true || /^(1|true|yes)$/i.test(String(v));
 };
 const getWatchIntervalMs = () => Number(value('watchIntervalMs', 'SA_WATCH_INTERVAL_MS', 3000));
@@ -123,6 +129,7 @@ function snapshot() {
     computerUseModel: getComputerUseModel(),
     maxSteps: getMaxSteps(),
     confirmEvery: getConfirmEvery(),
+    fullControl: getFullControl(),
     watchIntervalMs: getWatchIntervalMs(),
     watchMaxFrames: getWatchMaxFrames(),
   };
@@ -135,6 +142,7 @@ function update(patch) {
     'computerUseModel',
     'maxSteps',
     'confirmEvery',
+    'fullControl',
     'watchIntervalMs',
     'watchMaxFrames',
   ];
@@ -168,6 +176,7 @@ module.exports = {
   getActionDelayMs,
   getTargetWidth,
   getConfirmEvery,
+  getFullControl,
   getWatchIntervalMs,
   getWatchMaxFrames,
   getKeepImages,

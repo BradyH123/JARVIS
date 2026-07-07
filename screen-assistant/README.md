@@ -114,12 +114,13 @@ Global shortcuts (work from anywhere):
 | `ANTHROPIC_API_KEY` | your Claude API key | — (required) |
 | `ANTHROPIC_MODEL` | model for vision + reasoning | `claude-sonnet-5` |
 | `SA_COMPUTER_USE_MODEL` | model for the autonomous loop (needs computer-use support) | falls back to `ANTHROPIC_MODEL` |
-| `SA_COMPUTER_TOOL_TYPE` | computer tool version | `computer_20250124` |
-| `SA_COMPUTER_BETA` | computer-use beta flag | `computer-use-2025-01-24` |
+| `SA_COMPUTER_TOOL_TYPE` | computer tool version | `computer_20251124` |
+| `SA_COMPUTER_BETA` | computer-use beta flag | `computer-use-2025-11-24` |
 | `SA_MAX_STEPS` | hard cap on autonomous steps per run | `40` |
 | `SA_ACTION_DELAY_MS` | settle delay after each action | `350` |
 | `SA_TARGET_WIDTH` | width Claude "sees"; coords scaled to real px | `1280` |
 | `SA_CONFIRM_EVERY` | require confirmation before *every* action (paranoid) | off |
+| `SA_FULL_CONTROL` | act without per-action approval (STOP still works) | off |
 | `SA_WATCH_INTERVAL_MS` | Phase 2 capture sampling period | `3000` |
 | `SA_WATCH_MAX_FRAMES` | Phase 2 rolling buffer size | `40` |
 
