@@ -40,6 +40,7 @@ const executor = require('./lib/executor');
 const quickactions = require('./lib/quickactions');
 const improver = require('./lib/improver');
 const claudecode = require('./lib/claudecode');
+const terminal = require('./lib/shell');
 const memory = require('./lib/memory');
 const { WatchBuffer } = require('./lib/monitor');
 const { execFile } = require('child_process');
@@ -506,6 +507,63 @@ function registerIpc() {
     // Unsupported (e.g. non-macOS): let the caller fall back to the agent.
     send({ type: 'finished', status: 'fallback' });
     return { status: 'fallback', message: result.error };
+  });
+
+  // Terminal capability: run a real shell command and stream its output. This is
+  // powerful, so destructive-looking commands ALWAYS ask for approval (even in
+  // Full Control); STOP kills the process; output is streamed and logged.
+  ipcMain.handle('assistant:shell', async (_e, payload) => {
+    if (sessionRunning || improveRunning) return { status: 'busy' };
+    const command = String((payload && payload.command) || '').trim();
+    if (!command) return { status: 'error', message: 'No command.' };
+    const why = (payload && payload.why) || '';
+    const send = (evt) => broadcast('agent:event', evt);
+
+    const dangerous = terminal.looksDangerous(command);
+    // Approve if: not Full Control (always ask), or the command looks destructive
+    // (ask even in Full Control). STOP still applies during execution.
+    if (dangerous || !config.getFullControl()) {
+      const summary = `Run in Terminal: ${command}${why ? '  — ' + why : ''}`;
+      send({ type: 'permission', summary, risk: dangerous ? 'high' : 'medium' });
+      const approved = await new Promise((resolve) => {
+        const id = crypto.randomUUID();
+        pendingConfirms.set(id, resolve);
+        send({ type: 'confirm-request', id, summary, risk: dangerous ? 'high' : 'medium' });
+      });
+      send({ type: 'permission-result', approved });
+      if (!approved) {
+        send({ type: 'finished', status: 'aborted' });
+        return { status: 'denied' };
+      }
+    }
+
+    sessionAbort = false;
+    sessionRunning = true;
+    send({ type: 'started', goal: `$ ${command}` });
+    memory.logTurn('assistant', `(ran command) ${command}`, 'widget');
+    try {
+      const res = await terminal.run(command, {
+        cwd: REPO_DIR,
+        onData: (chunk) => send({ type: 'log', text: String(chunk).slice(0, 400) }),
+        shouldAbort: () => sessionAbort,
+      });
+      const tail = res.output ? res.output.slice(-600) : '';
+      if (res.ok) {
+        send({ type: 'done', message: tail || 'Command finished.' });
+        send({ type: 'finished', status: 'done', message: tail });
+      } else {
+        const why2 = res.timedOut ? 'timed out' : res.aborted ? 'stopped' : `exit ${res.code}`;
+        send({ type: 'error', message: `Command ${why2}. ${tail}`.trim() });
+        send({ type: 'finished', status: 'error', message: tail });
+      }
+      return { status: res.ok ? 'done' : 'error', output: res.output, code: res.code };
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    } finally {
+      sessionRunning = false;
+    }
   });
 
   // --- Self-improvement: the assistant edits its own source code ---
