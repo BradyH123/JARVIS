@@ -510,6 +510,33 @@ async function runCommand(text) {
     await api.doAnything(doM[4].trim());
     return;
   }
+  // Grounded click by label (accessibility tree) — "click the Send button".
+  if (api.axClick && /^\s*click(\s+on)?(\s+the)?\s+.+/i.test(text) && !/\bhttps?:\/\//i.test(text)) {
+    const m = /^\s*click(?:\s+on)?(?:\s+the)?\s+(.+?)(?:\s+(button|field|tab|link|icon|menu|checkbox|box))?\s*$/i.exec(text);
+    const label = m ? m[1].trim() : '';
+    if (label) {
+      log('info', '🎯 Clicking "' + label + '"…');
+      const r = await api.axClick(label);
+      if (r && r.ok) say('Clicked ' + r.label + '.');
+      else {
+        log('warn', (r && r.error) || 'Could not find that element.');
+        say("I couldn't find that to click.", { interrupt: true });
+      }
+      setState('idle');
+      return;
+    }
+  }
+  if (api.axElements && /^\s*(what can i click|list (the )?(buttons|elements|controls)|what('| i)?s clickable)/i.test(text)) {
+    const r = await api.axElements();
+    if (r && r.ok && r.elements.length) {
+      log('info', `${r.elements.length} things I can click in ${r.app}:`);
+      r.elements.slice(0, 14).forEach((e) => e.label && log('think', `• ${e.role}: ${e.label}`));
+    } else {
+      log('warn', (r && r.error) || 'No elements read (grant Accessibility permission).');
+    }
+    setState('idle');
+    return;
+  }
   setState('thinking');
   try {
     const routed = await api.command(text);

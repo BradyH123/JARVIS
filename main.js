@@ -44,6 +44,7 @@ const claudecode = require('./lib/claudecode');
 const terminal = require('./lib/shell');
 const webpage = require('./lib/webpage');
 const crawler = require('./lib/crawler');
+const axtree = require('./lib/axtree');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
 const sweep = require('./lib/sweep');
@@ -658,6 +659,15 @@ function registerIpc() {
           } else if (cap === 'harvest') {
             const h = await webpage.harvestActiveTab();
             r = h.ok ? `harvested ${h.title || h.url}` : h.error || 'failed';
+          } else if (cap === 'click_element') {
+            const ax = await axtree.elements();
+            const el = ax.ok ? axtree.match(ax.elements, a.label) : null;
+            if (el) {
+              await executor.perform({ action: 'left_click', coordinate: [el.x, el.y] });
+              r = 'clicked ' + el.label;
+            } else {
+              r = ax.ok ? `no "${a.label}" element found` : ax.error;
+            }
           } else if (cap === 'computer') {
             const res = await runSingleSession(null, a.goal || g, send);
             r = res.status;
@@ -829,6 +839,24 @@ function registerIpc() {
     }
   });
   ipcMain.handle('sweep:search', async (_e, query) => sweep.search(String(query || ''), 25));
+
+  // Accessibility-tree grounding: list actionable native UI elements, and click
+  // one BY LABEL using its real screen coordinates (Quality Blueprint §3.2).
+  ipcMain.handle('ax:elements', async () => axtree.elements());
+  ipcMain.handle('ax:click', async (_e, label) => {
+    if (!executor.isAvailable()) return { ok: false, error: 'Native input control is not available.' };
+    const send = (evt) => broadcast('agent:event', evt);
+    const ax = await axtree.elements();
+    if (!ax.ok) return { ok: false, error: ax.error };
+    const el = axtree.match(ax.elements, label);
+    if (!el) {
+      const visible = ax.elements.map((e) => e.label).filter(Boolean).slice(0, 10).join(', ');
+      return { ok: false, error: `No "${label}" here. I can see: ${visible || '(nothing labelled)'}` };
+    }
+    send({ type: 'action', detail: `🎯 click "${el.label}"` });
+    const r = await executor.perform({ action: 'left_click', coordinate: [el.x, el.y] });
+    return r.ok ? { ok: true, label: el.label } : { ok: false, error: r.error };
+  });
 
   // Content search — find files whose CONTENTS match (Spotlight), and
   // read/summarize a specific document.
