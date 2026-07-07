@@ -233,6 +233,48 @@ if (memBtn && api.memory) {
     await api.memory.open();
   });
 }
+
+/* ---------- always-on surveillance consent ---------- */
+const survBtn = document.getElementById('wx-surveil');
+function renderSurveil(on) {
+  if (!survBtn) return;
+  survBtn.classList.toggle('active', on);
+  survBtn.textContent = on ? '👁 watching (on)' : '👁 accept surveillance';
+}
+async function refreshSurveil() {
+  try {
+    const s = await api.settings.get();
+    renderSurveil(Boolean(s.alwaysWatch));
+  } catch {
+    /* ignore */
+  }
+}
+if (survBtn && api.setSurveillance) {
+  refreshSurveil();
+  survBtn.addEventListener('click', async () => {
+    const s = await api.settings.get().catch(() => ({}));
+    if (s.alwaysWatch) {
+      await api.setSurveillance(false);
+      renderSurveil(false);
+      log('info', 'Turned off always-on watching.');
+      say('I will stop always watching.', { interrupt: true });
+      return;
+    }
+    // First time: a clear consent before enabling continuous surveillance.
+    const ok = window.confirm(
+      'Accept always-on surveillance?\n\n' +
+        'JARVIS will ALWAYS watch your screen (starting now and every launch) and continuously ' +
+        'study how you use your apps, saving short text summaries to his memory to learn and ' +
+        'optimize himself. Screenshots stay on your computer — only text notes are kept.\n\n' +
+        'You can turn this off any time from this button.'
+    );
+    if (!ok) return;
+    await api.setSurveillance(true);
+    renderSurveil(true);
+    log('info', '👁 Always-on watching accepted — I am now studying how you work.');
+    say('Surveillance accepted. I am always watching and learning now.', { interrupt: true });
+  });
+}
 stopBtn.addEventListener('click', () => {
   log('warn', 'Stop requested…');
   api.stop();
@@ -261,6 +303,20 @@ if (api.onWatchEvent) {
 async function runCommand(text) {
   if (!text.trim()) return;
   log('action', '❯ ' + text);
+  // Fast path: screen reads/summaries go STRAIGHT to the vision read, bypassing
+  // the intent router (which sometimes replied "I'll do it" without an answer).
+  // This is why "summarize this tab" said done but never reported back.
+  if (
+    api.lookAtScreen &&
+    /(summari[sz]e|what does (this|it) (say|mean|show)|what('| i)?s on (my|the) screen|what is on (my|the) screen|read (this|it|the|my screen)|look at (this|it|my screen|the screen|the tab|this tab)|what am i (looking at|seeing)|describe (this|my screen|the screen))/i.test(
+      text
+    )
+  ) {
+    log('info', '👁 Looking at your screen…');
+    say('Looking at your screen.', { interrupt: true });
+    await api.lookAtScreen(text);
+    return;
+  }
   // Fast path: "reload/restart yourself" applies self-edited code immediately,
   // without a round-trip to the intent router.
   if (/^\s*(reload|restart|relaunch)\s+(yourself|jarvis|the app)?\s*$/i.test(text)) {
@@ -286,6 +342,14 @@ async function runCommand(text) {
     await api.improve.optimize();
     return;
   }
+  if ((/^\s*(accept surveillance|always watch)\b/i.test(text)) && api.setSurveillance) {
+    await api.setSurveillance(true);
+    renderSurveil(true);
+    say('Surveillance accepted. I am always watching and learning now.', { interrupt: true });
+    log('info', '👁 Always-on watching accepted — studying how you work every session.');
+    setState('idle', 'Watching & learning');
+    return;
+  }
   if (/^\s*(watch|learn|study)\s+(me|how i work|my workflow|what i do)\b/i.test(text) && api.observe) {
     await api.observe.start();
     say('Watching how you work and learning. Say stop watching to end.', { interrupt: true });
@@ -293,8 +357,10 @@ async function runCommand(text) {
     setState('idle', 'Watching & learning');
     return;
   }
-  if (/^\s*stop\s+(watching|learning|observing)\b/i.test(text) && api.observe) {
-    await api.observe.stop();
+  if (/^\s*stop\s+(watching|learning|observing|surveillance)\b/i.test(text)) {
+    if (api.setSurveillance) await api.setSurveillance(false);
+    else if (api.observe) await api.observe.stop();
+    if (typeof renderSurveil === 'function') renderSurveil(false);
     say('Stopped watching.', { interrupt: true });
     log('info', 'Stopped watch-and-learn.');
     setState('idle');

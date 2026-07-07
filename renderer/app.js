@@ -48,6 +48,8 @@ async function openSettings() {
   document.getElementById('set-maxsteps').value = s.maxSteps || 40;
   document.getElementById('set-paranoid').checked = Boolean(s.confirmEvery);
   document.getElementById('set-fullcontrol').checked = Boolean(s.fullControl);
+  const aw = document.getElementById('set-alwayswatch');
+  if (aw) aw.checked = Boolean(s.alwaysWatch);
   const modes = {
     encrypted: '🔒 key stored encrypted (OS keychain)',
     plaintext: '⚠ key stored unencrypted (no OS keychain available)',
@@ -73,6 +75,9 @@ document.getElementById('set-save').addEventListener('click', async () => {
     maxSteps: Number(document.getElementById('set-maxsteps').value) || 40,
     confirmEvery: document.getElementById('set-paranoid').checked,
     fullControl: document.getElementById('set-fullcontrol').checked,
+    alwaysWatch: document.getElementById('set-alwayswatch')
+      ? document.getElementById('set-alwayswatch').checked
+      : undefined,
   };
   const key = document.getElementById('set-key').value.trim();
   if (key) patch.apiKey = key;
