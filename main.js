@@ -423,11 +423,15 @@ function registerIpc() {
     sessionAbort = false;
     sessionRunning = true;
     send({ type: 'started', goal: objective });
+    memory.logTurn('assistant', `(started task) ${objective}`, 'widget');
     try {
       const result = await runSingleSession(skill, goal, send);
+      // Record the outcome so JARVIS remembers what he actually completed.
+      memory.logTurn('assistant', `(task ${result.status}) ${objective}`, 'widget');
       send({ type: 'finished', ...result });
       return result;
     } catch (err) {
+      memory.logTurn('assistant', `(task failed) ${objective}: ${err.message}`, 'widget');
       send({ type: 'error', message: err.message });
       return { status: 'error', message: err.message };
     } finally {
@@ -500,6 +504,7 @@ function registerIpc() {
     send({ type: 'started', goal: label });
     const result = await quickactions.perform(payload || {});
     if (result.ok) {
+      memory.logTurn('assistant', `(done) ${result.text || label}`, 'widget');
       send({ type: 'done', message: result.text || 'Done.' });
       send({ type: 'finished', status: 'done', message: result.text });
       return { status: 'done', message: result.text };
@@ -590,6 +595,7 @@ function registerIpc() {
           task: SELF_IMPROVE_TASK(String(goal)),
           cwd: REPO_DIR,
           model: config.getModel(),
+          apiKey: config.getApiKey(), // hand Claude Code JARVIS's working key
           onEvent: send,
           shouldAbort: () => sessionAbort,
         });
