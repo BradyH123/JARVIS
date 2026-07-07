@@ -351,112 +351,153 @@ cmd.addEventListener('keydown', (e) => {
   }
 });
 
-/* ---------- voice (click-to-toggle, always-on listening) ---------- */
+/* ---------- voice (click-to-talk via OpenAI Whisper) ----------
+ * Click the mic to arm continuous listening. Each turn: record from the mic,
+ * auto-stop on ~1.4s of silence, send the audio to Whisper (main → OpenAI),
+ * run the transcript as a command, then listen again. JARVIS won't record while
+ * he's speaking (so he doesn't hear himself), and turns wait for the current
+ * task to finish before the next capture. */
 const micBtn = document.getElementById('wx-mic');
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition = null;
-let listening = false; // is the mic armed (user toggled it on)?
-let voiceUnavailable = false; // set once we learn STT can't work in this build
-if (!SR) {
-  micBtn.disabled = true;
-  micBtn.title = 'Speech not available in this build — type instead';
-} else {
-  recognition = new SR();
-  recognition.lang = 'en-US';
-  recognition.continuous = true; // keep listening across pauses
-  recognition.interimResults = false;
+let listening = false; // armed for continuous listening
+let capturing = false; // a record cycle is currently active
+let mediaStream = null;
 
-  recognition.onresult = (e) => {
-    // Ignore input while JARVIS is speaking — otherwise the mic hears his own
-    // voice and loops. (STOP is always available via button / global shortcut.)
-    if (speech.synth && speech.synth.speaking) return;
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (!e.results[i].isFinal) continue;
-      const t = e.results[i][0].transcript.trim();
-      if (t) runCommand(t);
-    }
-  };
-  // The engine still auto-stops on long silence even in continuous mode —
-  // if the user hasn't toggled off, restart so it truly always listens.
-  recognition.onend = () => {
-    if (listening) {
-      try {
-        recognition.start();
-      } catch {
-        /* will retry on next end */
-      }
-    } else {
-      micBtn.classList.remove('listening');
-      micBtn.textContent = '🎙';
-      if (current === 'listening') setState('idle');
-    }
-  };
-  recognition.onerror = (ev) => {
-    // 'no-speech'/'aborted' are benign; onend handles the restart.
-    if (ev.error === 'not-allowed') {
-      listening = false;
-      voiceUnavailable = true;
-      micBtn.classList.remove('listening');
-      log('warn', 'Microphone permission denied — enable it for the app in System Settings › Privacy › Microphone.');
-      say('I need microphone permission. Enable it in System Settings, then click the mic again.', { interrupt: true });
-    } else if (ev.error === 'network' || ev.error === 'service-not-allowed') {
-      // The real Electron limitation: Chromium's speech recognizer has no cloud
-      // backend in this build, so it can't transcribe. Stop the silent retry
-      // loop and tell the user plainly instead of pretending to listen.
-      listening = false;
-      voiceUnavailable = true;
-      micBtn.classList.remove('listening');
-      micBtn.textContent = '🎙';
-      micBtn.title = 'Click to dictate with macOS (Fn Fn), or just type';
-      if (current === 'listening') setState('idle', 'Tip: Fn Fn to dictate, or type');
-      log('warn', "Built-in voice recognition isn't available (Electron has no speech backend). Use macOS Dictation — press Fn (🌐) twice in the box — or type. Everything else works the same.");
-      say("I can't transcribe directly here. Press the fn key twice to dictate into the box.", { interrupt: true });
-    } else if (ev.error === 'audio-capture') {
-      listening = false;
-      voiceUnavailable = true;
-      micBtn.classList.remove('listening');
-      log('warn', 'No microphone found.');
-      say('I could not find a microphone.', { interrupt: true });
-    }
-  };
+function setMic(on) {
+  micBtn.classList.toggle('listening', on);
+  micBtn.textContent = on ? '● live' : '🎙';
+}
 
-  function startListening() {
-    if (listening) return;
-    if (voiceUnavailable) {
-      // Electron can't transcribe, but macOS Dictation can — it types into the
-      // focused field. Focus the command box and point the user at it so they
-      // still get real voice input with no extra service.
-      cmd.focus();
-      log('info', '🎙 Use macOS Dictation: press the Fn (🌐) key twice, speak, then Enter. I\'ll do the rest.');
-      say('Press the fn key twice to dictate into the box, then hit enter.', { interrupt: true });
-      return;
-    }
-    listening = true;
-    micBtn.classList.add('listening');
-    micBtn.textContent = '● live';
-    try {
-      recognition.start();
-    } catch {
-      /* already started */
-    }
-    setState('listening');
-    say('Listening.', { interrupt: true });
+async function captureOnce() {
+  if (capturing || !listening) return;
+  capturing = true;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    capturing = false;
+    disarmVoice();
+    log('warn', 'Microphone blocked — allow it in System Settings › Privacy & Security › Microphone.');
+    say('I need microphone permission. Enable it in System Settings.', { interrupt: true });
+    return;
   }
-  function stopListening() {
-    listening = false;
-    micBtn.classList.remove('listening');
-    micBtn.textContent = '🎙';
+  mediaStream = stream;
+  let rec;
+  try {
+    rec = new MediaRecorder(stream);
+  } catch {
+    capturing = false;
+    stream.getTracks().forEach((t) => t.stop());
+    disarmVoice();
+    log('error', 'Audio recording is not available in this build.');
+    return;
+  }
+  const chunks = [];
+  rec.ondataavailable = (e) => {
+    if (e.data && e.data.size) chunks.push(e.data);
+  };
+
+  // Silence detection so a turn ends naturally without a second click.
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ac = new AC();
+  const analyser = ac.createAnalyser();
+  analyser.fftSize = 512;
+  ac.createMediaStreamSource(stream).connect(analyser);
+  const buf = new Uint8Array(analyser.fftSize);
+  let spoke = false;
+  let lastLoud = Date.now();
+  const started = Date.now();
+  const SILENCE_MS = 1400; // trailing silence that ends a turn
+  const LOUD = 0.02; // RMS threshold that counts as speech
+  const MAX_MS = 15000; // hard cap on one turn
+  const NO_SPEECH_MS = 4500; // give up if nothing was said
+  const monitor = setInterval(() => {
+    analyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const v = (buf[i] - 128) / 128;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / buf.length);
+    const now = Date.now();
+    if (rms > LOUD) {
+      spoke = true;
+      lastLoud = now;
+    }
+    const endTurn =
+      (spoke && now - lastLoud > SILENCE_MS) ||
+      now - started > MAX_MS ||
+      (!spoke && now - started > NO_SPEECH_MS);
+    if (endTurn && rec.state === 'recording') rec.stop();
+  }, 120);
+
+  rec.onstop = async () => {
+    clearInterval(monitor);
     try {
-      recognition.stop();
+      ac.close();
     } catch {
       /* ignore */
     }
-    if (current === 'listening') setState('idle');
-  }
+    stream.getTracks().forEach((t) => t.stop());
+    mediaStream = null;
+    capturing = false;
 
-  micBtn.addEventListener('click', () => (listening ? stopListening() : startListening()));
-  api.onWidgetSummon(() => startListening());
+    const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+    if (spoke && blob.size > 800) {
+      setState('thinking', 'Transcribing…');
+      const audio = await blob.arrayBuffer();
+      const res = await api.transcribe(audio);
+      if (res && res.ok && res.text) {
+        await runCommand(res.text);
+      } else if (res && /openai api key/i.test(res.error || '')) {
+        disarmVoice();
+        log('warn', 'Add your OpenAI key in Settings (⚙) to use voice.');
+        say('Add your open A I key in settings to use voice.', { interrupt: true });
+        api.openDashboard();
+        return;
+      } else if (res && res.error) {
+        log('error', res.error);
+        if (current === 'thinking') setState('idle');
+      }
+    } else if (current === 'thinking' || current === 'listening') {
+      setState('idle');
+    }
+    if (listening) scheduleNext();
+  };
+
+  setState('listening', 'Listening… (speak, then pause)');
+  rec.start();
 }
+
+// Wait until JARVIS isn't speaking, then record the next turn.
+function scheduleNext() {
+  const tick = () => {
+    if (!listening) return;
+    if (speech.synth && speech.synth.speaking) return setTimeout(tick, 300);
+    captureOnce();
+  };
+  setTimeout(tick, 250);
+}
+
+function armVoice() {
+  if (listening) return;
+  listening = true;
+  setMic(true);
+  say('Listening.', { interrupt: true });
+  scheduleNext();
+}
+function disarmVoice() {
+  listening = false;
+  setMic(false);
+  try {
+    if (mediaStream) mediaStream.getTracks().forEach((t) => t.stop());
+  } catch {
+    /* ignore */
+  }
+  if (current === 'listening' || current === 'thinking') setState('idle');
+}
+
+micBtn.addEventListener('click', () => (listening ? disarmVoice() : armVoice()));
+if (api.onWidgetSummon) api.onWidgetSummon(() => armVoice());
 
 /* ---------- approval gate ---------- */
 const confirmBox = document.getElementById('wx-confirm');

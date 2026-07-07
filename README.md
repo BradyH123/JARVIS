@@ -100,21 +100,23 @@ On first launch you'll need to grant OS permissions:
 If the top bar shows `⚠ no OS control`, the native input module didn't load —
 re-run `npm install` and check the permissions above.
 
-### Voice control
+### Voice control (OpenAI Whisper)
 
-**Speaking back works** (JARVIS talks via the browser SpeechSynthesis API).
-**Voice-to-text is limited by Electron:** Chromium's `SpeechRecognition` has no
-cloud speech backend in an Electron build (official Chrome ships a Google speech
-key that Electron doesn't), so live dictation typically fails with a `network`
-error. The widget now detects this and tells you clearly instead of blinking
-forever — **type your command** and everything else (routing, actions, spoken
-replies) is identical.
+**Talking to JARVIS works** with real click-to-talk speech-to-text via **OpenAI
+Whisper**. Click the mic to arm listening; each turn records from your mic,
+auto-stops after a short pause, is transcribed by Whisper, and runs as a command
+— then he listens again. He won't record while he's speaking (no feedback loop),
+and the STOP control always applies.
 
-To get *real* voice-to-text, wire a dedicated STT provider: capture mic audio
-with `getUserMedia` + `MediaRecorder` in the widget's voice section, POST it to
-your STT of choice (Whisper API, Deepgram, AssemblyAI, …), and call
-`assistant.command(transcript)` with the result. That needs its own API key/
-service — it can't run off the Anthropic key alone.
+This needs an **OpenAI API key** (separate from your Anthropic key, because the
+Anthropic API has no speech-to-text). Add it in **⚙ Settings → OpenAI API key**;
+it's stored encrypted via the OS keychain like the Anthropic key. Without it, the
+mic is disabled and you type commands instead — routing is identical.
+
+Pipeline: `renderer/widget.js` records with `getUserMedia`/`MediaRecorder` +
+silence detection → `lib/transcribe.js` (main process) POSTs to Whisper →
+transcript is fed into the same command router. **Speaking back** uses the
+browser SpeechSynthesis API.
 
 Global shortcuts (work from anywhere):
 
