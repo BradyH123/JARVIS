@@ -501,6 +501,15 @@ async function runCommand(text) {
     setState('idle');
     return;
   }
+  // Explicit orchestrator trigger: "do this: …", "do everything: …", "handle this
+  // for me: …", "for me, …" → plan-and-execute multi-step.
+  const doM = /^\s*(do (this|everything|all of this|the following)|handle (this|it) for me|take care of|for me[,:])\s*[:\-]?\s*(.+)/i.exec(text);
+  if (api.doAnything && doM && doM[4] && doM[4].trim().length > 3) {
+    log('info', '🧩 Multi-step task…');
+    say('On it. Planning the steps.', { interrupt: true });
+    await api.doAnything(doM[4].trim());
+    return;
+  }
   setState('thinking');
   try {
     const routed = await api.command(text);
@@ -526,6 +535,10 @@ async function runCommand(text) {
       log('info', '$ ' + routed.command);
       say('Running that in the terminal.', { interrupt: true });
       await api.runCommand({ command: routed.command, why: routed.why });
+    } else if (routed.action === 'complex_task') {
+      log('info', '🧩 Multi-step task: ' + routed.goal);
+      say('On it. Planning the steps.', { interrupt: true });
+      await api.doAnything(routed.goal);
     } else if (routed.action === 'goal') {
       log('info', 'Goal: ' + routed.goal);
       await api.execute({ goal: routed.goal });

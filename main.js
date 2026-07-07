@@ -582,6 +582,112 @@ function registerIpc() {
     return { status: 'fallback', message: result.error };
   });
 
+  // Ask the user to approve something mid-run (reuses the confirm gate).
+  const askConfirm = (send, summary, risk) =>
+    new Promise((resolve) => {
+      if (sessionAbort) return resolve(false);
+      const id = crypto.randomUUID();
+      pendingConfirms.set(id, resolve);
+      send({ type: 'confirm-request', id, summary, risk: risk || 'medium' });
+    });
+
+  // "Do almost anything": plan a complex request into steps and execute them in
+  // order across every capability, gated + STOP-able. The orchestrator.
+  ipcMain.handle('assistant:do', async (_e, goal) => {
+    if (sessionRunning || improveRunning) return { status: 'busy' };
+    const g = String(goal || '').trim();
+    if (!g) return { status: 'error', message: 'What should I do?' };
+    const send = (evt) => broadcast('agent:event', evt);
+    sessionAbort = false;
+    sessionRunning = true;
+    send({ type: 'started', goal: g });
+    memory.logTurn('user', g, 'widget');
+    const t0 = Date.now();
+    try {
+      send({ type: 'thinking', text: 'Planning the steps…' });
+      const steps = await claude.planTasks(g);
+      if (!steps.length) {
+        const m = "I couldn't turn that into steps. Try rephrasing, or ask for one thing at a time.";
+        send({ type: 'error', message: m });
+        send({ type: 'finished', status: 'error', message: m });
+        return { status: 'error', message: m };
+      }
+      send({ type: 'thinking', text: 'Plan:\n' + steps.map((s, i) => `${i + 1}. ${s.why || s.capability}`).join('\n') });
+
+      for (let i = 0; i < steps.length; i++) {
+        if (sessionAbort) break;
+        const s = steps[i] || {};
+        const a = s.args || {};
+        const cap = s.capability;
+        send({ type: 'step-started', index: i, total: steps.length, label: s.why || cap });
+        let r = '';
+        try {
+          if (cap === 'quick_action') {
+            const q = await quickactions.perform(a);
+            r = q.text || q.error || 'done';
+          } else if (cap === 'run_command') {
+            const cmd = String(a.command || '').trim();
+            if (!cmd) r = '(no command)';
+            else {
+              const dangerous = terminal.looksDangerous(cmd);
+              let ok = true;
+              if (dangerous || !config.getFullControl()) ok = await askConfirm(send, 'Run: ' + cmd, dangerous ? 'high' : 'medium');
+              if (!ok) r = '(denied)';
+              else {
+                const res = await terminal.run(cmd, { cwd: REPO_DIR, onData: (c) => send({ type: 'log', text: String(c).slice(0, 200) }), shouldAbort: () => sessionAbort });
+                r = (res.output || '').slice(-300) || (res.ok ? 'done' : 'failed');
+              }
+            }
+          } else if (cap === 'find_file') {
+            const hits = sweep.search(a.query || '', 5);
+            r = hits.length ? hits.map((h) => h.name).join(', ') : '(no match)';
+          } else if (cap === 'search_content') {
+            const cs = await content.searchContent(a.query || '', { limit: 8 });
+            r = cs.ok && cs.results.length ? cs.results.map((f) => f.name).join(', ') : '(none)';
+          } else if (cap === 'read_screen') {
+            const shot = await captureFrame();
+            r = await claude.describeScreen(a.question || 'Summarize what is on screen.', shot);
+          } else if (cap === 'crawl') {
+            let url = a.url;
+            if (!url) {
+              const t = await webpage.readActiveTab().catch(() => ({}));
+              url = t && t.url;
+            }
+            const pages = url ? await crawler.crawl({ startUrl: url, maxDepth: a.depth || 2, shouldAbort: () => sessionAbort }) : [];
+            r = `crawled ${pages.length} pages`;
+          } else if (cap === 'harvest') {
+            const h = await webpage.harvestActiveTab();
+            r = h.ok ? `harvested ${h.title || h.url}` : h.error || 'failed';
+          } else if (cap === 'computer') {
+            const res = await runSingleSession(null, a.goal || g, send);
+            r = res.status;
+          } else if (cap === 'reply') {
+            r = a.message || '';
+            if (r) send({ type: 'thinking', text: r });
+          } else {
+            r = '(unknown step)';
+          }
+        } catch (e) {
+          r = 'error: ' + e.message;
+        }
+        send({ type: 'step-finished', index: i, status: 'done', label: (s.why || cap) + (r ? ' — ' + String(r).slice(0, 140) : '') });
+        memory.logTurn('assistant', `(step ${i + 1}/${steps.length}: ${cap}) ${String(r).slice(0, 160)}`, 'widget');
+      }
+
+      const status = sessionAbort ? 'aborted' : 'done';
+      telemetry.record({ kind: 'orchestrate', goal: g.slice(0, 80), status, steps: steps.length, durationMs: Date.now() - t0 });
+      send({ type: 'done', message: status === 'aborted' ? 'Stopped.' : 'Finished the task.' });
+      send({ type: 'finished', status });
+      return { status, steps: steps.length };
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    } finally {
+      sessionRunning = false;
+    }
+  });
+
   // Look at the screen and ANSWER / summarize (a one-shot vision read, not the
   // action loop). This is why "summarize this tab" never returned anything before
   // — it was going to the action loop, which has nothing to click.
