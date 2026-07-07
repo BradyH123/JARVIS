@@ -47,6 +47,7 @@ const crawler = require('./lib/crawler');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
 const sweep = require('./lib/sweep');
+const content = require('./lib/content');
 const memory = require('./lib/memory');
 const { WatchBuffer } = require('./lib/monitor');
 const { execFile } = require('child_process');
@@ -722,6 +723,53 @@ function registerIpc() {
     }
   });
   ipcMain.handle('sweep:search', async (_e, query) => sweep.search(String(query || ''), 25));
+
+  // Content search — find files whose CONTENTS match (Spotlight), and
+  // read/summarize a specific document.
+  ipcMain.handle('content:search', async (_e, query) => content.searchContent(String(query || ''), { limit: 40 }));
+  ipcMain.handle('content:summarize', async (_e, payload) => {
+    const send = (evt) => broadcast('agent:event', evt);
+    const q = String((payload && payload.query) || '').trim();
+    const question = (payload && payload.question) || `Summarize this document.`;
+    send({ type: 'started', goal: 'Reading a document' });
+    send({ type: 'action', detail: '🔎 finding the document…' });
+    try {
+      // Prefer an explicit path; else find by content; else by filename index.
+      let file = payload && payload.path;
+      if (!file && q) {
+        const cs = await content.searchContent(q, { limit: 1 });
+        if (cs.ok && cs.results.length) file = cs.results[0].path;
+        else {
+          const idx = sweep.search(q, 1);
+          if (idx.length) file = idx[0].path;
+        }
+      }
+      if (!file) {
+        const msg = `I couldn't find a document matching "${q}".`;
+        send({ type: 'error', message: msg });
+        send({ type: 'finished', status: 'error', message: msg });
+        return { status: 'error', message: msg };
+      }
+      send({ type: 'action', detail: '📖 reading ' + path.basename(file) });
+      const rt = await content.readText(file);
+      if (!rt.ok) {
+        send({ type: 'error', message: rt.error });
+        send({ type: 'finished', status: 'error', message: rt.error });
+        return { status: 'error', message: rt.error };
+      }
+      const answer = await claude.answerFromText(question, path.basename(file), rt.text);
+      memory.logTurn('user', question + ' (' + path.basename(file) + ')', 'widget');
+      memory.logTurn('assistant', answer, 'widget');
+      telemetry.record({ kind: 'read-doc', goal: path.basename(file), status: 'done' });
+      send({ type: 'done', message: `📄 ${path.basename(file)}\n\n${answer}` });
+      send({ type: 'finished', status: 'done', message: answer });
+      return { status: 'done', file, answer };
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    }
+  });
   ipcMain.handle('sweep:stats', async () => sweep.stats());
   // Open an indexed file/app (only paths that exist).
   ipcMain.handle('sweep:open', async (_e, filePath) => {

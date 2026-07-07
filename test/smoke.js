@@ -305,6 +305,18 @@ await test('WatchBuffer respects maxFrames and recent()', async () => {
     assert.strictEqual(sweep.search('budget')[0].ext, 'xlsx');
   });
 
+  // --- content extraction (reading a file's text) ---
+  const content = require('../lib/content');
+  await test('content.readText reads text files and rejects missing ones', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sa-content-'));
+    const f = path.join(dir, 'notes.md');
+    fs.writeFileSync(f, '# Q3 budget\nThe number is 42.');
+    const r = await content.readText(f);
+    assert.ok(r.ok && /Q3 budget/.test(r.text) && /42/.test(r.text));
+    const miss = await content.readText(path.join(dir, 'nope.txt'));
+    assert.strictEqual(miss.ok, false);
+  });
+
   console.log(`\n${passed} test(s) passed.`);
 }
 
