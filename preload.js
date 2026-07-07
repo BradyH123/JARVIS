@@ -46,8 +46,17 @@ contextBridge.exposeInMainWorld('assistant', {
     run: (goal) => ipcRenderer.invoke('improve:run', goal),
     viaScreen: (request) => ipcRenderer.invoke('improve:onscreen', request),
     commit: (message) => ipcRenderer.invoke('improve:commit', message),
+    optimize: () => ipcRenderer.invoke('improve:optimize'),
     selfUpdate: () => ipcRenderer.invoke('improve:selfupdate'),
     relaunch: () => ipcRenderer.invoke('improve:relaunch'),
+  },
+
+  // Self-telemetry + watch-and-learn.
+  telemetry: () => ipcRenderer.invoke('telemetry:summary'),
+  observe: {
+    start: () => ipcRenderer.invoke('observe:start'),
+    stop: () => ipcRenderer.invoke('observe:stop'),
+    status: () => ipcRenderer.invoke('observe:status'),
   },
   onImproveEvent: (cb) => ipcRenderer.on('improve:event', (_e, evt) => cb(evt)),
 

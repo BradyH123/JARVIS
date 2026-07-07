@@ -42,6 +42,7 @@ const improver = require('./lib/improver');
 const claudecode = require('./lib/claudecode');
 const terminal = require('./lib/shell');
 const transcribe = require('./lib/transcribe');
+const telemetry = require('./lib/telemetry');
 const memory = require('./lib/memory');
 const { WatchBuffer } = require('./lib/monitor');
 const { execFile } = require('child_process');
@@ -106,7 +107,41 @@ let watch = null; // Phase 2 always-on capture buffer
 let sessionAbort = false; // kill switch for the autonomous loop
 let sessionRunning = false;
 let improveRunning = false; // the assistant is editing its own code
+let observing = false; // watch-and-learn loop is active
+let observeTimer = null;
+const OBSERVE_INTERVAL_MS = 120000; // summarize the user's activity every ~2 min
 const pendingConfirms = new Map(); // id -> resolve(boolean) for permission gates
+
+// Periodically summarize recent activity into the Observations vault.
+async function observeTick() {
+  if (!observing || !watch) return;
+  try {
+    const frames = watch.recent(4);
+    if (!frames || !frames.length) return;
+    const note = await claude.observeActivity(frames);
+    if (note) {
+      memory.addObservation(note);
+      broadcast('watch:event', { active: true, paused: false, learning: true, note });
+    }
+  } catch {
+    /* best-effort learning — never disrupt the app */
+  }
+}
+function startObserving() {
+  if (observing) return;
+  if (watch) watch.start();
+  observing = true;
+  observeTimer = setInterval(observeTick, OBSERVE_INTERVAL_MS);
+  setTimeout(observeTick, 8000); // a first observation shortly after starting
+}
+function stopObserving() {
+  observing = false;
+  if (observeTimer) {
+    clearInterval(observeTimer);
+    observeTimer = null;
+  }
+  if (watch) watch.stop();
+}
 
 function resolveAllConfirms(value) {
   for (const resolve of pendingConfirms.values()) resolve(value);
@@ -441,14 +476,17 @@ function registerIpc() {
     sessionRunning = true;
     send({ type: 'started', goal: objective });
     memory.logTurn('assistant', `(started task) ${objective}`, 'widget');
+    const startedAt = Date.now();
     try {
       const result = await runSingleSession(skill, goal, send);
       // Record the outcome so JARVIS remembers what he actually completed.
       memory.logTurn('assistant', `(task ${result.status}) ${objective}`, 'widget');
+      telemetry.record({ kind: 'task', goal: objective, status: result.status, steps: result.steps, durationMs: Date.now() - startedAt });
       send({ type: 'finished', ...result });
       return result;
     } catch (err) {
       memory.logTurn('assistant', `(task failed) ${objective}: ${err.message}`, 'widget');
+      telemetry.record({ kind: 'task', goal: objective, status: 'error', error: err.message, durationMs: Date.now() - startedAt });
       send({ type: 'error', message: err.message });
       return { status: 'error', message: err.message };
     } finally {
@@ -525,7 +563,9 @@ function registerIpc() {
         ? 'Closing browser tabs'
         : `Opening ${t}`;
     send({ type: 'started', goal: label });
+    const qStart = Date.now();
     const result = await quickactions.perform(payload || {});
+    telemetry.record({ kind: 'quick', goal: `${k} ${t || ''}`.trim(), status: result.ok ? 'done' : 'error', error: result.ok ? undefined : result.error, durationMs: Date.now() - qStart });
     if (result.ok) {
       memory.logTurn('assistant', `(done) ${result.text || label}`, 'widget');
       send({ type: 'done', message: result.text || 'Done.' });
@@ -545,15 +585,18 @@ function registerIpc() {
     const q = String(question || '').trim() || 'Summarize what is on my screen.';
     send({ type: 'started', goal: 'Looking at your screen' });
     send({ type: 'action', detail: '👁 reading the screen…' });
+    const lookStart = Date.now();
     try {
       const shot = await captureFrame();
       const answer = await claude.describeScreen(q, shot);
       memory.logTurn('user', q, 'widget');
       memory.logTurn('assistant', answer, 'widget');
+      telemetry.record({ kind: 'look', goal: q, status: 'done', durationMs: Date.now() - lookStart });
       send({ type: 'done', message: answer });
       send({ type: 'finished', status: 'done', message: answer });
       return { status: 'done', answer };
     } catch (err) {
+      telemetry.record({ kind: 'look', goal: q, status: 'error', error: err.message, durationMs: Date.now() - lookStart });
       send({ type: 'error', message: err.message });
       send({ type: 'finished', status: 'error', message: err.message });
       return { status: 'error', message: err.message };
@@ -592,12 +635,14 @@ function registerIpc() {
     sessionRunning = true;
     send({ type: 'started', goal: `$ ${command}` });
     memory.logTurn('assistant', `(ran command) ${command}`, 'widget');
+    const shStart = Date.now();
     try {
       const res = await terminal.run(command, {
         cwd: REPO_DIR,
         onData: (chunk) => send({ type: 'log', text: String(chunk).slice(0, 400) }),
         shouldAbort: () => sessionAbort,
       });
+      telemetry.record({ kind: 'shell', goal: command.slice(0, 80), status: res.ok ? 'done' : 'error', durationMs: Date.now() - shStart });
       const tail = res.output ? res.output.slice(-600) : '';
       if (res.ok) {
         send({ type: 'done', message: tail || 'Command finished.' });
@@ -744,6 +789,44 @@ function registerIpc() {
     });
   });
 
+  // JARVIS's own performance data (efficiency of his runs).
+  ipcMain.handle('telemetry:summary', async () => ({
+    text: telemetry.summaryText(),
+    ...telemetry.summary(),
+  }));
+
+  // Data-driven self-optimization: take the performance summary and have the
+  // on-screen Claude Code session improve the code that's slowest / least
+  // reliable. This is "gather data on my work and use it to optimize my code".
+  ipcMain.handle('improve:optimize', async () => {
+    if (sessionRunning || improveRunning) return { status: 'busy' };
+    if (!executor.isAvailable()) {
+      return { status: 'error', message: 'Native input control is not available (see README).' };
+    }
+    const stats = telemetry.summaryText();
+    const request =
+      'Optimize your own code using YOUR REAL PERFORMANCE DATA below. Identify the slowest ' +
+      'and least-reliable kinds of run and make targeted improvements to reduce their latency ' +
+      'and failures (fewer screenshots, faster paths, better error handling). Keep all tests ' +
+      'passing.\n\nPERFORMANCE DATA:\n' + stats;
+    const send = (evt) => broadcast('agent:event', evt);
+    sessionAbort = false;
+    sessionRunning = true;
+    send({ type: 'started', goal: 'Optimizing myself from my performance data' });
+    send({ type: 'thinking', text: stats });
+    memory.logTurn('assistant', '(self-optimization run) using performance data', 'widget');
+    try {
+      const result = await runSingleSession(null, ONSCREEN_TASK(request), send);
+      send({ type: 'finished', ...result });
+      return result;
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    } finally {
+      sessionRunning = false;
+    }
+  });
+
   // Relaunch the app so freshly self-edited code takes effect.
   ipcMain.handle('improve:relaunch', async () => {
     app.relaunch();
@@ -800,6 +883,18 @@ function registerIpc() {
   ipcMain.handle('watch:resume', async () => watch.resume());
   ipcMain.handle('watch:status', async () => watch.status());
   ipcMain.handle('watch:recent', async (_e, n) => watch.recent(n));
+
+  // Watch-and-learn: while active, periodically summarize what the user is doing
+  // into the Observations vault so JARVIS learns how humans use interfaces.
+  ipcMain.handle('observe:start', async () => {
+    startObserving();
+    return { ok: true, observing: true };
+  });
+  ipcMain.handle('observe:stop', async () => {
+    stopObserving();
+    return { ok: true, observing: false };
+  });
+  ipcMain.handle('observe:status', async () => ({ observing }));
 
   ipcMain.handle('config:info', async () => ({
     ...config.snapshot(),
@@ -899,6 +994,7 @@ app.whenReady().then(() => {
     vaultDir = path.join(app.getPath('userData'), 'JARVIS Vault');
   }
   memory.init(vaultDir);
+  telemetry.init(app.getPath('userData'));
   watch = new WatchBuffer({
     capture: captureSized,
     intervalMs: config.getWatchIntervalMs(),
@@ -927,6 +1023,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  if (observeTimer) clearInterval(observeTimer);
   if (watch) watch.stop();
 });
 

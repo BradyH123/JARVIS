@@ -249,6 +249,24 @@ await test('WatchBuffer respects maxFrames and recent()', async () => {
     assert.strictEqual(bad.code, 3, 'non-zero exit reported');
   });
 
+  // --- self-telemetry (records its own work, summarizes efficiency) ---
+  const telemetry = require('../lib/telemetry');
+  await test('telemetry records runs and summarizes efficiency', () => {
+    telemetry.init(fs.mkdtempSync(path.join(os.tmpdir(), 'sa-tel-')));
+    telemetry.record({ kind: 'quick', status: 'done', durationMs: 200 });
+    telemetry.record({ kind: 'task', status: 'done', durationMs: 8000, steps: 12 });
+    telemetry.record({ kind: 'task', status: 'error', durationMs: 5000, error: 'boom' });
+    const s = telemetry.summary();
+    assert.strictEqual(s.total, 3);
+    const task = s.kinds.find((k) => k.kind === 'task');
+    assert.strictEqual(task.count, 2);
+    assert.strictEqual(task.successRate, 50, 'one of two tasks failed');
+    // slowest kind is listed first, and errors are aggregated
+    assert.strictEqual(s.kinds[0].kind, 'task', 'slowest kind first');
+    assert.ok(s.topErrors.some((e) => /boom/.test(e.error)));
+    assert.ok(/success/i.test(telemetry.summaryText()));
+  });
+
   console.log(`\n${passed} test(s) passed.`);
 }
 

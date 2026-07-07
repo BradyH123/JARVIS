@@ -280,6 +280,33 @@ async function runCommand(text) {
     await api.improve.commit();
     return;
   }
+  if (/^\s*optimize\s+(yourself|jarvis|your code)?\s*$/i.test(text) && api.improve.optimize) {
+    say('Analyzing my performance data and optimizing my own code.', { interrupt: true });
+    log('info', '📊 Optimizing myself from my performance data…');
+    await api.improve.optimize();
+    return;
+  }
+  if (/^\s*(watch|learn|study)\s+(me|how i work|my workflow|what i do)\b/i.test(text) && api.observe) {
+    await api.observe.start();
+    say('Watching how you work and learning. Say stop watching to end.', { interrupt: true });
+    log('info', '👁 Watching and learning from how you work (saved to my Observations).');
+    setState('idle', 'Watching & learning');
+    return;
+  }
+  if (/^\s*stop\s+(watching|learning|observing)\b/i.test(text) && api.observe) {
+    await api.observe.stop();
+    say('Stopped watching.', { interrupt: true });
+    log('info', 'Stopped watch-and-learn.');
+    setState('idle');
+    return;
+  }
+  if (/^\s*(how are you doing|your stats|show.*stats|performance|how efficient)\b/i.test(text) && api.telemetry) {
+    const t = await api.telemetry();
+    log('think', t.text || 'No data yet.');
+    say((t.text || 'No performance data yet.').split('\n')[0]);
+    setState('idle');
+    return;
+  }
   setState('thinking');
   try {
     const routed = await api.command(text);
