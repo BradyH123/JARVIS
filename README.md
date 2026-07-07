@@ -155,6 +155,7 @@ jarvis/  (repo root)
 │   ├── claude.js      Anthropic calls: learn / chat / plan / route-command
 │   ├── executor.js    OS input layer (nut.js) — the "hands"
 │   ├── quickactions.js instant fast-path: open app / site / search (no screenshots)
+│   ├── shell.js       terminal capability: run real shell commands (guarded)
 │   ├── agent.js       computer-use agentic loop + approval gate — the "brain"
 │   ├── selfedit.js    sandboxed self-editing engine (read/write/validate/revert)
 │   ├── improver.js    built-in self-improvement loop (fallback editor)
@@ -248,6 +249,28 @@ The engine (`lib/improver.js`) uses your normal `ANTHROPIC_MODEL` and the same
 API key — it talks to the Anthropic API directly, so it needs **API credits**
 (separate from any Claude subscription). It does **not** require the Claude
 desktop app.
+
+## Terminal — do anything you could do in a shell
+
+JARVIS can run **real shell commands** on the host (`lib/shell.js`), so he can do
+anything you'd do in Terminal: install tools (`brew`/`npm`/`pip`), run scripts,
+use `git`, manage files, drive other CLIs. Ask naturally — *"install jq"*,
+*"what's my git status"*, *"make a folder called notes on my Desktop"* — and the
+intent router sends it down the `run_command` path, runs it through your **login
+shell** (so your PATH and tools resolve as normal), and streams the output into
+the widget.
+
+Guardrails:
+
+- Commands that look **destructive or outbound** (`rm -rf`, `sudo`, `curl … | sh`,
+  `git reset --hard`, disk operations, …) **always ask for approval first**, even
+  in Full Control mode.
+- Everything is **killable** with STOP and **time-bounded**, and each command is
+  noted in the memory vault.
+
+Combined with the computer-use loop (mouse/keyboard) and the instant open/search
+fast path, this is what lets JARVIS do essentially anything you can do on the
+machine — by GUI *or* command line.
 
 ## Safety
 

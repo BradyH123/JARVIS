@@ -291,6 +291,10 @@ async function runCommand(text) {
         log('info', 'Falling back to full control for: ' + routed.target);
         await api.execute({ goal: `${routed.kind.replace('_', ' ')} ${routed.target}` });
       }
+    } else if (routed.action === 'run_command') {
+      log('info', '$ ' + routed.command);
+      say('Running that in the terminal.', { interrupt: true });
+      await api.runCommand({ command: routed.command, why: routed.why });
     } else if (routed.action === 'goal') {
       log('info', 'Goal: ' + routed.goal);
       await api.execute({ goal: routed.goal });
@@ -499,6 +503,10 @@ api.onAgentEvent((evt) => {
       break;
     case 'action':
       log('action', '➤ ' + (evt.detail || evt.action));
+      break;
+    case 'log':
+      // streamed terminal output
+      if (evt.text) log('think', evt.text);
       break;
     case 'step-started':
       log('info', `▸ Step ${evt.index + 1}/${evt.total}: ${evt.label}`);
