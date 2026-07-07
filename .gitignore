@@ -6,3 +6,4 @@ out/
 .DS_Store
 scripts/preview-shots/
 .selfedit-backups/
+eval-report.json

@@ -72,7 +72,11 @@ key — it's stored **encrypted** via your OS keychain (Electron `safeStorage`).
 No `.env` file needed. (Developers can still use `.env`; a saved setting always
 wins over an env var, which wins over the built-in default.)
 
-Run the tests any time with `npm test` (no key or network needed).
+Run the tests any time with `npm test`, and the **eval scorecard** with `npm run
+eval` — a set of golden safety + correctness invariants (never quits itself, no
+path traversal, dangerous commands flagged, core logic correct). Self-improvement
+is **gated** on it: a self-edit is only kept if the eval still passes, so JARVIS
+can't weaken its own guarantees. Neither needs a key or network.
 
 ### Building installers
 

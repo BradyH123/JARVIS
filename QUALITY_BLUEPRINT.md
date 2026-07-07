@@ -194,10 +194,9 @@ before/after proof.
 ## 4. Sequenced roadmap
 
 **Phase 0 — Foundations of trust (do first)**
-1. Golden-task eval harness + scorecard (`test/eval/`). *(unblocks measuring
-   everything else)*
+1. ✅ Golden-task eval harness + scorecard (`test/eval/`), gating self-improvement.
 2. Mechanical self-preservation guard in `executor.js`.
-3. Model tiering: Haiku router (`getRouterModel`).
+3. ✅ Model tiering: Haiku router (`getRouterModel`).
 
 **Phase 1 — Perception & grounding (the ceiling-raiser)**
 4. `lib/perceive.js` world model (DOM → AX tree → screenshot).
