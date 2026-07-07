@@ -915,7 +915,21 @@ function registerIpc() {
       watch.intervalMs = config.getWatchIntervalMs();
       watch.maxFrames = config.getWatchMaxFrames();
     }
+    // Honour the "always watch" consent live: start/stop the learn loop.
+    if (patch && patch.alwaysWatch !== undefined) {
+      if (config.getAlwaysWatch()) startObserving();
+      else stopObserving();
+    }
     return { ...snap, canControl: executor.isAvailable() };
+  });
+
+  // One-tap consent from the widget: accept/stop always-on surveillance. Persists
+  // the choice so it holds across restarts.
+  ipcMain.handle('surveillance:set', async (_e, accepted) => {
+    config.update({ alwaysWatch: Boolean(accepted) });
+    if (accepted) startObserving();
+    else stopObserving();
+    return { ok: true, alwaysWatch: config.getAlwaysWatch() };
   });
   // Validate a key by making a tiny real call, so users get instant feedback.
   ipcMain.handle('settings:test-key', async () => {
@@ -1014,6 +1028,10 @@ app.whenReady().then(() => {
   // actually visible. Otherwise keep it preloaded but hidden until summoned.
   createWindow(!config.getApiKey());
   registerShortcuts();
+
+  // If the user has accepted always-on surveillance, begin watching & learning
+  // immediately — no need to ask each session.
+  if (config.getAlwaysWatch()) startObserving();
 
   app.on('activate', () => {
     if (!widgetWindow || widgetWindow.isDestroyed()) createWidget();

@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('assistant', {
     stop: () => ipcRenderer.invoke('observe:stop'),
     status: () => ipcRenderer.invoke('observe:status'),
   },
+  // One-tap "accept surveillance" consent (persisted; always-on across restarts).
+  setSurveillance: (accepted) => ipcRenderer.invoke('surveillance:set', accepted),
   onImproveEvent: (cb) => ipcRenderer.on('improve:event', (_e, evt) => cb(evt)),
 
   // Memory vault (Obsidian-style long-term memory).

@@ -233,6 +233,48 @@ if (memBtn && api.memory) {
     await api.memory.open();
   });
 }
+
+/* ---------- always-on surveillance consent ---------- */
+const survBtn = document.getElementById('wx-surveil');
+function renderSurveil(on) {
+  if (!survBtn) return;
+  survBtn.classList.toggle('active', on);
+  survBtn.textContent = on ? '👁 watching (on)' : '👁 accept surveillance';
+}
+async function refreshSurveil() {
+  try {
+    const s = await api.settings.get();
+    renderSurveil(Boolean(s.alwaysWatch));
+  } catch {
+    /* ignore */
+  }
+}
+if (survBtn && api.setSurveillance) {
+  refreshSurveil();
+  survBtn.addEventListener('click', async () => {
+    const s = await api.settings.get().catch(() => ({}));
+    if (s.alwaysWatch) {
+      await api.setSurveillance(false);
+      renderSurveil(false);
+      log('info', 'Turned off always-on watching.');
+      say('I will stop always watching.', { interrupt: true });
+      return;
+    }
+    // First time: a clear consent before enabling continuous surveillance.
+    const ok = window.confirm(
+      'Accept always-on surveillance?\n\n' +
+        'JARVIS will ALWAYS watch your screen (starting now and every launch) and continuously ' +
+        'study how you use your apps, saving short text summaries to his memory to learn and ' +
+        'optimize himself. Screenshots stay on your computer — only text notes are kept.\n\n' +
+        'You can turn this off any time from this button.'
+    );
+    if (!ok) return;
+    await api.setSurveillance(true);
+    renderSurveil(true);
+    log('info', '👁 Always-on watching accepted — I am now studying how you work.');
+    say('Surveillance accepted. I am always watching and learning now.', { interrupt: true });
+  });
+}
 stopBtn.addEventListener('click', () => {
   log('warn', 'Stop requested…');
   api.stop();
@@ -286,6 +328,14 @@ async function runCommand(text) {
     await api.improve.optimize();
     return;
   }
+  if ((/^\s*(accept surveillance|always watch)\b/i.test(text)) && api.setSurveillance) {
+    await api.setSurveillance(true);
+    renderSurveil(true);
+    say('Surveillance accepted. I am always watching and learning now.', { interrupt: true });
+    log('info', '👁 Always-on watching accepted — studying how you work every session.');
+    setState('idle', 'Watching & learning');
+    return;
+  }
   if (/^\s*(watch|learn|study)\s+(me|how i work|my workflow|what i do)\b/i.test(text) && api.observe) {
     await api.observe.start();
     say('Watching how you work and learning. Say stop watching to end.', { interrupt: true });
@@ -293,8 +343,10 @@ async function runCommand(text) {
     setState('idle', 'Watching & learning');
     return;
   }
-  if (/^\s*stop\s+(watching|learning|observing)\b/i.test(text) && api.observe) {
-    await api.observe.stop();
+  if (/^\s*stop\s+(watching|learning|observing|surveillance)\b/i.test(text)) {
+    if (api.setSurveillance) await api.setSurveillance(false);
+    else if (api.observe) await api.observe.stop();
+    if (typeof renderSurveil === 'function') renderSurveil(false);
     say('Stopped watching.', { interrupt: true });
     log('info', 'Stopped watch-and-learn.');
     setState('idle');
