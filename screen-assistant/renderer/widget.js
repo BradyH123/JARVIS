@@ -150,6 +150,21 @@ clearFeed();
 document.getElementById('wx-dash').addEventListener('click', () => api.openDashboard());
 document.getElementById('wx-hide').addEventListener('click', () => api.hideWidget());
 document.getElementById('wx-quit').addEventListener('click', () => api.quitApp());
+
+/* ---------- collapse / expand (floating-orb mini-mode) ---------- */
+let collapsed = false;
+function applyCollapsed(v) {
+  collapsed = Boolean(v);
+  document.body.classList.toggle('collapsed', collapsed);
+}
+document.getElementById('wx-collapse').addEventListener('click', () => api.collapseWidget(true));
+// When collapsed, double-clicking the orb expands it again.
+document.getElementById('widget').addEventListener('dblclick', () => {
+  if (collapsed) api.collapseWidget(false);
+});
+if (api.onWidgetCollapsed) api.onWidgetCollapsed(applyCollapsed);
+// A summon (global shortcut) always pops the widget back to full size.
+if (api.onWidgetSummon) api.onWidgetSummon(() => collapsed && api.collapseWidget(false));
 document.getElementById('wx-open-skills').addEventListener('click', () => api.openDashboard('skills'));
 document.getElementById('wx-open-wf').addEventListener('click', () => api.openDashboard('workflows'));
 stopBtn.addEventListener('click', () => {
@@ -169,6 +184,12 @@ async function refreshCounts() {
 }
 refreshCounts();
 setInterval(refreshCounts, 4000);
+
+/* ---------- live "watching" (REC) indicator ---------- */
+const recEl = document.getElementById('wx-rec');
+if (api.onWatchEvent) {
+  api.onWatchEvent((s) => recEl.classList.toggle('hidden', !(s && s.active && !s.paused)));
+}
 
 /* ---------- command routing ---------- */
 async function runCommand(text) {

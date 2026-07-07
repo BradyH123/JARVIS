@@ -146,10 +146,19 @@ function update(patch) {
   return snapshot();
 }
 
+// --- Widget window state (position + collapsed mini-mode) ---
+const getWidgetState = () => settings.widget || {};
+function setWidgetState(patch) {
+  settings.widget = { ...(settings.widget || {}), ...patch };
+  persist();
+}
+
 module.exports = {
   init,
   update,
   snapshot,
+  getWidgetState,
+  setWidgetState,
   getApiKey,
   getModel,
   getComputerUseModel,

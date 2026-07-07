@@ -115,14 +115,23 @@ function createWindow(show) {
   return mainWindow;
 }
 
+const WIDGET_FULL = { width: 360, height: 520 };
+const WIDGET_MINI = { width: 132, height: 132 };
+let widgetCollapsed = false;
+let saveWidgetTimer = null;
+
 // The always-on-top JARVIS widget: frameless, transparent, floats over work.
 function createWidget() {
   const wa = screen.getPrimaryDisplay().workArea;
+  const saved = config.getWidgetState();
+  widgetCollapsed = Boolean(saved.collapsed);
+  const size = widgetCollapsed ? WIDGET_MINI : WIDGET_FULL;
+
   widgetWindow = new BrowserWindow({
-    width: 360,
-    height: 520,
-    x: wa.x + wa.width - 384,
-    y: wa.y + wa.height - 552,
+    width: size.width,
+    height: size.height,
+    x: Number.isFinite(saved.x) ? saved.x : wa.x + wa.width - 384,
+    y: Number.isFinite(saved.y) ? saved.y : wa.y + wa.height - 552,
     frame: false,
     transparent: true,
     resizable: false,
@@ -140,6 +149,39 @@ function createWidget() {
   widgetWindow.setAlwaysOnTop(true, 'floating');
   widgetWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   widgetWindow.loadFile(path.join(__dirname, 'renderer', 'widget.html'));
+
+  // Persist position (debounced) whenever the user drags the widget.
+  widgetWindow.on('move', () => {
+    clearTimeout(saveWidgetTimer);
+    saveWidgetTimer = setTimeout(() => {
+      if (!widgetWindow || widgetWindow.isDestroyed()) return;
+      const [x, y] = widgetWindow.getPosition();
+      config.setWidgetState({ x, y });
+    }, 400);
+  });
+
+  // Tell the renderer its initial collapsed state once it's ready.
+  widgetWindow.webContents.on('did-finish-load', () => {
+    widgetWindow.webContents.send('widget:collapsed', widgetCollapsed);
+  });
+}
+
+// Collapse/expand the widget to the floating-orb mini-mode, keeping the
+// bottom-right corner anchored so it doesn't jump across the screen.
+function setWidgetCollapsed(collapsed) {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  widgetCollapsed = Boolean(collapsed);
+  const [x, y] = widgetWindow.getPosition();
+  const [w, h] = widgetWindow.getSize();
+  const next = widgetCollapsed ? WIDGET_MINI : WIDGET_FULL;
+  widgetWindow.setBounds({
+    x: x + (w - next.width),
+    y: y + (h - next.height),
+    width: next.width,
+    height: next.height,
+  });
+  config.setWidgetState({ collapsed: widgetCollapsed });
+  widgetWindow.webContents.send('widget:collapsed', widgetCollapsed);
 }
 
 /**
@@ -420,6 +462,10 @@ function registerIpc() {
   ipcMain.handle('widget:hide', async () => {
     if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.hide();
     return { ok: true };
+  });
+  ipcMain.handle('widget:collapse', async (_e, collapsed) => {
+    setWidgetCollapsed(collapsed);
+    return { collapsed: widgetCollapsed };
   });
   ipcMain.handle('widget:quit', async () => {
     app.quit();

@@ -198,3 +198,28 @@ html, body {
 .widget[data-state='running'] { --accent: var(--run); }
 .widget[data-state='approval'] { --accent: var(--approve); }
 .widget[data-state='done'] { --accent: var(--done); }
+
+/* live "watching" indicator (privacy signal) */
+.wx-rec {
+  font-family: ui-monospace, monospace; font-size: 10px; letter-spacing: 1px;
+  color: var(--red); margin-right: auto; margin-left: 10px;
+  animation: recpulse 1.6s ease-in-out infinite;
+}
+@keyframes recpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* collapsed floating-orb mini-mode */
+body.collapsed .widget {
+  width: 116px; height: 116px; border-radius: 50%; margin: 6px auto;
+  -webkit-app-region: drag; cursor: grab;
+}
+body.collapsed .wx-header,
+body.collapsed .wx-state,
+body.collapsed .wx-sub,
+body.collapsed .wx-feed,
+body.collapsed .wx-confirm,
+body.collapsed .wx-input,
+body.collapsed .wx-foot { display: none !important; }
+body.collapsed .wx-core { height: 116px; }
+body.collapsed #wx-orb { width: 116px; height: 116px; }
+body.collapsed .wx-orb-label { font-size: 8px; letter-spacing: 2px; }
+@media (prefers-reduced-motion: reduce) { .wx-rec { animation: none; } }

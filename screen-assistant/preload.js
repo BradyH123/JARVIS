@@ -60,8 +60,10 @@ contextBridge.exposeInMainWorld('assistant', {
   openDashboard: (tab) => ipcRenderer.invoke('window:open-dashboard', tab),
   hideWidget: () => ipcRenderer.invoke('widget:hide'),
   quitApp: () => ipcRenderer.invoke('widget:quit'),
+  collapseWidget: (collapsed) => ipcRenderer.invoke('widget:collapse', collapsed),
   summaryCounts: () => ipcRenderer.invoke('summary:counts'),
   onWidgetSummon: (cb) => ipcRenderer.on('widget:summon', cb),
+  onWidgetCollapsed: (cb) => ipcRenderer.on('widget:collapsed', (_e, v) => cb(v)),
   onFocusTab: (cb) => ipcRenderer.on('dashboard:focus-tab', (_e, tab) => cb(tab)),
 
   // Global-shortcut push from main → renderer.

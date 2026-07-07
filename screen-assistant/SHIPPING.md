@@ -51,7 +51,7 @@ by what blocks a release vs. what polishes it.
 ## 5. Privacy & trust surface (Phase 4)
 - ◻ Per-app allow/deny list for the watch buffer.
 - ◻ Password-field / sensitive-region redaction before any frame is sent.
-- ◻ A visible "recording" indicator while watching is active.
+- ✅ A visible "recording" indicator while watching is active (widget ● REC).
 - ◻ A one-screen privacy explainer (what's local, what's sent, when).
 
 ## 6. The manual smoke test (do this on each target OS before shipping)

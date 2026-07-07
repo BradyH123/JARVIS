@@ -17,7 +17,8 @@ function mock() {
       openDashboard: noop, hideWidget: noop, quitApp: noop,
       summaryCounts: async () => ({ skills: 3, workflows: 1, running: false, watching: false }),
       onWidgetSummon: noop, onFocusTab: noop, onToggleRecord: noop,
-      onWatchEvent: noop,
+      collapseWidget: noop, onWidgetCollapsed: noop,
+      onWatchEvent: (cb) => { window.__watchCb = cb; },
       command: async () => ({ action: 'reply', message: 'ok' }),
       execute: async () => ({ status: 'done' }),
       workflows: { run: async () => ({ status: 'done' }) },
@@ -74,6 +75,17 @@ async function main() {
   await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(OUT, 'w3-approval.png'), omitBackground: true });
   console.log('  ✓ w3-approval.png');
+
+  // collapsed floating-orb mini-mode (with REC indicator active)
+  const mini = await ctx.newPage();
+  await mini.setViewportSize({ width: 140, height: 140 });
+  await mini.addInitScript(mock());
+  await mini.goto(WIDGET);
+  await mini.waitForTimeout(300);
+  await mini.evaluate(() => document.body.classList.add('collapsed'));
+  await mini.waitForTimeout(500);
+  await mini.screenshot({ path: path.join(OUT, 'w4-mini.png'), omitBackground: true });
+  console.log('  ✓ w4-mini.png');
 
   await browser.close();
   console.log('done');
