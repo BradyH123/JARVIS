@@ -317,6 +317,50 @@ async function runCommand(text) {
     await api.sweep.run({ everything });
     return;
   }
+  // Summarize / read a specific document (find it, extract text, summarize).
+  if (
+    api.content &&
+    /\b(summari[sz]e|read|what does|tell me about)\b.*\b(my|the|this|that)\s+(file|document|doc|pdf|note|report|paper|essay|resume|contract|spreadsheet|letter|memo)\b/i.test(text)
+  ) {
+    const q = text
+      .replace(/^\s*\w+\s+/i, '')
+      .replace(/\b(my|the|this|that|a|an|file|document|doc|pdf|note|report|paper|essay|contract|spreadsheet|letter|memo|about|says|say)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    log('info', '🔎 Finding and reading that document…');
+    say('Finding and reading that document.', { interrupt: true });
+    await api.content.summarize({ query: q, question: text });
+    return;
+  }
+  // Content search — search INSIDE files (Spotlight): "find files that mention X",
+  // "search my files for X", "find the doc about X".
+  if (
+    api.content &&
+    /\b(files?|docs?|documents?|pdfs?|notes?)\b.*\b(mention|about|contain|that (say|mention)|with|for)\b|\bsearch my (files?|computer|docs?|drive) for\b|\bfind (the )?(doc|document|file|pdf|note)s?\b.*\b(about|that|mention|with|containing)\b/i.test(text)
+  ) {
+    const q = text
+      .replace(/^\s*(find|search|locate|which|what|show me)\b/i, '')
+      .replace(/\b(the |my |a )?(files?|docs?|documents?|pdfs?|notes?)\b/gi, ' ')
+      .replace(/\b(that )?(mention(s|ing)?|contain(s|ing)?|about|for|with|say(s|ing)?)\b/gi, ' ')
+      .replace(/\b(in|inside|on) (my|the) (computer|mac|files?|drive)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (q) {
+      log('info', `🔎 Searching inside your files for "${q}"…`);
+      say('Searching inside your files.', { interrupt: true });
+      const r = await api.content.search(q);
+      if (r && r.ok && r.results && r.results.length) {
+        log('info', `Found ${r.results.length} file(s) mentioning "${q}":`);
+        r.results.slice(0, 8).forEach((f) => log('think', '📄 ' + f.name + '  —  ' + f.path));
+        say(`Found ${r.results.length} files mentioning ${q}. Top: ${r.results[0].name}.`);
+      } else {
+        log('warn', (r && r.error) || `No files mention "${q}".`);
+        say(`I couldn't find files mentioning ${q}.`, { interrupt: true });
+      }
+      setState('idle');
+      return;
+    }
+  }
   // Find / open a file from the index. Only hijack "open" when it clearly means a
   // FILE (has an extension or file-ish words) — "open Safari/email" still routes.
   {

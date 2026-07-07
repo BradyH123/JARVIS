@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld('assistant', {
     stats: () => ipcRenderer.invoke('sweep:stats'),
     open: (filePath) => ipcRenderer.invoke('sweep:open', filePath),
   },
+  content: {
+    search: (query) => ipcRenderer.invoke('content:search', query),
+    summarize: (payload) => ipcRenderer.invoke('content:summarize', payload),
+  },
   runCommand: (payload) => ipcRenderer.invoke('assistant:shell', payload),
   transcribe: (audio) => ipcRenderer.invoke('voice:transcribe', audio),
   stop: () => ipcRenderer.invoke('assistant:stop'),
