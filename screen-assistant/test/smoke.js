@@ -121,6 +121,42 @@ await test('WatchBuffer respects maxFrames and recent()', async () => {
     assert.strictEqual(messages[0].content[1].type, 'text');
   });
 
+  // --- selfedit safety layer (the assistant editing its own code) ---
+  const selfedit = require('../lib/selfedit');
+  await test('selfedit.isSourcePath allows own source, rejects traversal/off-limits', () => {
+    assert.ok(selfedit.isSourcePath('lib/agent.js'));
+    assert.ok(selfedit.isSourcePath('renderer/widget.js'));
+    // extension not in the allowlist
+    assert.ok(!selfedit.isSourcePath('lib/native.node'));
+    // path traversal must be refused
+    assert.ok(!selfedit.isSourcePath('../secrets.js'));
+    assert.ok(!selfedit.isSourcePath('/etc/passwd'));
+    // off-limits directories are invisible
+    assert.ok(!selfedit.isSourcePath('node_modules/x/index.js'));
+    assert.ok(!selfedit.isSourcePath('.git/config'));
+    assert.ok(!selfedit.isSourcePath('.selfedit-backups/old/lib/agent.js'));
+  });
+
+  await test('selfedit.listSource enumerates real source, and read/write reject bad paths', () => {
+    const files = selfedit.listSource();
+    assert.ok(files.includes('lib/agent.js'), 'should see its own agent module');
+    assert.ok(files.includes('main.js'));
+    assert.ok(!files.some((f) => f.includes('node_modules')), 'never lists dependencies');
+    assert.throws(() => selfedit.readFile('../outside.js'), /source file/);
+    assert.throws(() => selfedit.writeFile('/tmp/evil.js', 'x'), /source file/);
+  });
+
+  await test('selfedit.snapshot/restore round-trips (revert safety)', () => {
+    const rel = 'test/.selfedit-fixture.js';
+    const abs = path.join(selfedit.ROOT, rel);
+    const snap = selfedit.snapshot([rel]); // file does not exist yet → null
+    assert.strictEqual(snap[rel], null);
+    selfedit.writeFile(rel, '// temp\n');
+    assert.ok(fs.existsSync(abs), 'write created the file');
+    selfedit.restore(snap); // null original ⇒ delete it again
+    assert.ok(!fs.existsSync(abs), 'restore removed the once-new file');
+  });
+
   console.log(`\n${passed} test(s) passed.`);
 }
 

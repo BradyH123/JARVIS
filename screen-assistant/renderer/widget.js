@@ -52,6 +52,7 @@ const STATE = {
   listening: { color: '#22d3ee', label: 'LISTEN', state: 'Listening…', sub: 'Speak your command' },
   thinking: { color: '#ffb020', label: 'THINK', state: 'Thinking…', sub: 'Routing your request' },
   running: { color: '#ffb020', label: 'ACTIVE', state: 'Working…', sub: 'Controlling your computer' },
+  improving: { color: '#a86bff', label: 'REWIRE', state: 'Rewriting my code…', sub: 'Editing myself' },
   approval: { color: '#ff5c5c', label: 'HOLD', state: 'Approval needed', sub: 'Review the action below' },
   done: { color: '#4bd18a', label: 'DONE', state: 'Completed', sub: 'Ready for the next task' },
   error: { color: '#ff5c5c', label: 'ERROR', state: 'Something went wrong', sub: 'See the log below' },
@@ -61,8 +62,8 @@ let current = 'idle';
 function setState(name, subOverride) {
   current = name;
   const s = STATE[name] || STATE.idle;
-  widget.dataset.state = ['listening', 'running', 'thinking'].includes(name)
-    ? name === 'thinking'
+  widget.dataset.state = ['listening', 'running', 'thinking', 'improving'].includes(name)
+    ? name === 'thinking' || name === 'improving'
       ? 'running'
       : name
     : name === 'approval' || name === 'done'
@@ -72,7 +73,10 @@ function setState(name, subOverride) {
   stateEl.textContent = s.state;
   subEl.textContent = subOverride || s.sub;
   orb.color = s.color;
-  stopBtn.classList.toggle('hidden', !(name === 'running' || name === 'thinking' || name === 'approval'));
+  stopBtn.classList.toggle(
+    'hidden',
+    !(name === 'running' || name === 'thinking' || name === 'approval' || name === 'improving')
+  );
 }
 
 /* ---------- the arc-reactor orb ---------- */
@@ -231,6 +235,14 @@ if (api.onWatchEvent) {
 async function runCommand(text) {
   if (!text.trim()) return;
   log('action', '❯ ' + text);
+  // Fast path: "reload/restart yourself" applies self-edited code immediately,
+  // without a round-trip to the intent router.
+  if (/^\s*(reload|restart|relaunch)\s+(yourself|jarvis|the app)?\s*$/i.test(text)) {
+    say('Reloading to apply my new code.', { interrupt: true });
+    log('info', 'Relaunching…');
+    await api.improve.relaunch();
+    return;
+  }
   setState('thinking');
   try {
     const routed = await api.command(text);
@@ -243,6 +255,18 @@ async function runCommand(text) {
     } else if (routed.action === 'goal') {
       log('info', 'Goal: ' + routed.goal);
       await api.execute({ goal: routed.goal });
+    } else if (routed.action === 'self_improve') {
+      log('info', '🛠 Improving myself: ' + routed.request);
+      say('Editing my own code now. ' + routed.request, { interrupt: true });
+      await api.improve.run(routed.request);
+    } else if (routed.action === 'set_autonomy') {
+      await api.settings.update({ fullControl: routed.enabled });
+      const msg = routed.enabled
+        ? 'Full Control on — I will act autonomously without asking. Say STOP any time.'
+        : 'Full Control off — I will ask before risky actions.';
+      log('info', (routed.enabled ? '🔓 ' : '🔒 ') + msg);
+      say(msg, { interrupt: true });
+      setState('idle', routed.enabled ? 'Full Control ON' : 'Approval mode');
     } else {
       log('think', routed.message || '(no reply)');
       say(routed.message || '');
@@ -356,6 +380,7 @@ if (!SR) {
 const confirmBox = document.getElementById('wx-confirm');
 const confirmMsg = document.getElementById('wx-confirm-msg');
 let pendingConfirmId = null;
+let reloadPending = false; // the confirm box is offering a post-self-edit reload
 function showConfirm(evt) {
   pendingConfirmId = evt.id;
   confirmMsg.innerHTML = `<strong>Approve (${evt.risk || 'medium'} risk)?</strong><br>${escapeHtml(evt.summary || '')}`;
@@ -365,13 +390,26 @@ function showConfirm(evt) {
 function hideConfirm() {
   confirmBox.classList.add('hidden');
   pendingConfirmId = null;
+  reloadPending = false;
 }
 document.getElementById('wx-approve').addEventListener('click', async () => {
+  if (reloadPending) {
+    hideConfirm();
+    log('info', 'Relaunching to apply…');
+    await api.improve.relaunch();
+    return;
+  }
   if (pendingConfirmId) await api.confirm({ id: pendingConfirmId, approved: true });
   hideConfirm();
   setState('running');
 });
 document.getElementById('wx-deny').addEventListener('click', async () => {
+  if (reloadPending) {
+    hideConfirm();
+    log('info', 'Not reloading yet — say "reload yourself" when ready.');
+    setState('idle', 'Say "reload yourself" to apply');
+    return;
+  }
   if (pendingConfirmId) await api.confirm({ id: pendingConfirmId, approved: false });
   hideConfirm();
   setState('running');
@@ -438,6 +476,94 @@ api.onAgentEvent((evt) => {
       break;
   }
 });
+
+/* ---------- self-improvement event stream ---------- */
+if (api.onImproveEvent) {
+  api.onImproveEvent((evt) => {
+    switch (evt.type) {
+      case 'started':
+        clearFeed();
+        setState('improving', evt.goal || '');
+        log('info', '🛠 Improving myself: ' + (evt.goal || ''));
+        break;
+      case 'thinking':
+        log('think', '🧠 ' + evt.text);
+        break;
+      case 'read':
+        log('action', '👁 read ' + evt.path);
+        break;
+      case 'write':
+        log('action', '✎ edited ' + evt.path);
+        say('Editing ' + prettyPath(evt.path));
+        break;
+      case 'validating':
+        log('info', '⚙ Validating my changes…');
+        say('Testing my new code.');
+        break;
+      case 'validated':
+        log('info', '✓ Changes pass syntax + tests.');
+        break;
+      case 'validation-failed':
+        log('warn', '✗ Validation failed — trying to fix it.');
+        break;
+      case 'error':
+        log('error', evt.message || 'Self-improve error');
+        say('Sorry, I could not improve myself. ' + shortErr(evt.message), { interrupt: true });
+        setState('error');
+        break;
+      case 'finished':
+        handleImproveFinished(evt);
+        break;
+      default:
+        break;
+    }
+  });
+}
+
+function prettyPath(p) {
+  return String(p || '').split('/').pop();
+}
+function shortErr(m) {
+  return String(m || '').split('\n')[0].slice(0, 120);
+}
+
+function handleImproveFinished(evt) {
+  if (evt.status === 'done') {
+    const files = (evt.changed || []).length;
+    log('info', `✅ Self-improvement done — ${files} file(s) changed. ${evt.summary || ''}`);
+    say(
+      'Done improving myself. ' +
+        (evt.summary || '') +
+        ' Say "reload yourself" to apply the changes.',
+      { interrupt: true }
+    );
+    setState('done', 'Say "reload yourself" to apply');
+    showReloadPrompt();
+  } else if (evt.status === 'aborted') {
+    log('warn', 'Self-improvement stopped — changes reverted.');
+    say('Stopped. I rolled my code back.', { interrupt: true });
+    setState('idle');
+  } else {
+    const why =
+      evt.status === 'validation-failed'
+        ? "the change didn't pass my tests"
+        : evt.status === 'incomplete'
+        ? "I couldn't finish the change"
+        : evt.message || 'an error';
+    log('error', `Self-improvement failed (${why}). ${evt.reverted ? 'Code reverted.' : ''}`);
+    say('I could not safely make that change, so I reverted my code.', { interrupt: true });
+    setState('error');
+  }
+}
+
+// Offer a one-click reload after a successful self-edit (reusing the confirm UI).
+function showReloadPrompt() {
+  confirmMsg.innerHTML =
+    '<strong>Reload to apply my new code?</strong><br>' +
+    'I rewrote my own source. Reloading restarts me with the changes.';
+  confirmBox.classList.remove('hidden');
+  reloadPending = true;
+}
 
 setState('idle');
 

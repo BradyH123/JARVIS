@@ -35,6 +35,7 @@ const { WorkflowStore } = require('./lib/workflows');
 const claude = require('./lib/claude');
 const agent = require('./lib/agent');
 const executor = require('./lib/executor');
+const improver = require('./lib/improver');
 const { WatchBuffer } = require('./lib/monitor');
 
 let mainWindow = null;
@@ -51,6 +52,7 @@ let workflows = null; // Phase 3 workflow store
 let watch = null; // Phase 2 always-on capture buffer
 let sessionAbort = false; // kill switch for the autonomous loop
 let sessionRunning = false;
+let improveRunning = false; // the assistant is editing its own code
 const pendingConfirms = new Map(); // id -> resolve(boolean) for permission gates
 
 function resolveAllConfirms(value) {
@@ -352,7 +354,7 @@ function registerIpc() {
   // 'agent:event' channel. Requires the native input module + user approval.
   ipcMain.handle('assistant:execute', async (e, payload) => {
     const { skillId, goal } = payload || {};
-    if (sessionRunning) return { status: 'busy' };
+    if (sessionRunning || improveRunning) return { status: 'busy' };
     if (!executor.isAvailable()) {
       return {
         status: 'error',
@@ -386,7 +388,7 @@ function registerIpc() {
   // Run a saved workflow: each step is a gated autonomous session; halt if a
   // step ends anything other than 'done' (abort/error/step-cap).
   ipcMain.handle('workflows:run', async (e, workflowId) => {
-    if (sessionRunning) return { status: 'busy' };
+    if (sessionRunning || improveRunning) return { status: 'busy' };
     if (!executor.isAvailable()) {
       return { status: 'error', message: 'Native input module not available. See README.' };
     }
@@ -433,6 +435,43 @@ function registerIpc() {
     sessionAbort = true;
     resolveAllConfirms(false); // unblock any pending permission prompt as denied
     return { stopped: true };
+  });
+
+  // --- Self-improvement: the assistant edits its own source code ---
+  // Claude reads/rewrites files in the app's own tree (guarded by lib/selfedit),
+  // the change is validated (syntax + smoke tests), and reverted if it fails.
+  // Progress streams on 'improve:event'. A successful change needs a relaunch to
+  // load the new code (improve:relaunch), which the renderer offers.
+  ipcMain.handle('improve:run', async (_e, goal) => {
+    if (sessionRunning || improveRunning) return { status: 'busy' };
+    if (!goal || !String(goal).trim()) {
+      return { status: 'error', message: 'Describe what to improve.' };
+    }
+    const send = (evt) => broadcast('improve:event', evt);
+    sessionAbort = false;
+    improveRunning = true;
+    send({ type: 'started', goal: String(goal) });
+    try {
+      const result = await improver.improve({
+        goal: String(goal),
+        onEvent: send,
+        shouldAbort: () => sessionAbort,
+      });
+      send({ type: 'finished', ...result });
+      return result;
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    } finally {
+      improveRunning = false;
+    }
+  });
+
+  // Relaunch the app so freshly self-edited code takes effect.
+  ipcMain.handle('improve:relaunch', async () => {
+    app.relaunch();
+    app.exit(0);
+    return { ok: true };
   });
 
   // Renderer's answer to a confirm-request.
@@ -507,7 +546,7 @@ function registerIpc() {
   ipcMain.handle('summary:counts', async () => ({
     skills: store.list().length,
     workflows: workflows.list().length,
-    running: sessionRunning,
+    running: sessionRunning || improveRunning,
     watching: watch ? watch.status().active : false,
   }));
 }

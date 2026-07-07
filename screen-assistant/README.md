@@ -47,6 +47,13 @@ feed, and quick counts of your skills and workflows. The full **workspace**
   rolling buffer of recent frames. Nothing is written to disk or sent anywhere
   unless you turn a slice of it into a skill — so you can name something you
   *just* did. Pause any time.
+- **Self-improvement**: ask the assistant to change *itself* — "make your orb
+  bigger", "add a dark theme", "fix the way you handle X" — and it reads and
+  rewrites its own source code to do it. Every self-edit is **snapshotted,
+  validated (syntax-checked + the test suite is run), and automatically
+  reverted if it fails**, so a bad change can't brick the app. A good change is
+  applied on the next reload — say **"reload yourself"** (or click Reload) to
+  restart with the new code. See "Self-improvement" below.
 
 ## Requirements
 
@@ -139,6 +146,8 @@ screen-assistant/
 │   ├── claude.js      Anthropic calls: learn / chat / plan / route-command
 │   ├── executor.js    OS input layer (nut.js) — the "hands"
 │   ├── agent.js       computer-use agentic loop + approval gate — the "brain"
+│   ├── selfedit.js    sandboxed self-editing engine (read/write/validate/revert)
+│   ├── improver.js    self-improvement loop — the assistant rewrites its own code
 │   └── monitor.js     Phase 2 in-memory watch buffer — continuous perception
 └── renderer/          Teach / Watch / Skills / Assistant tabs + run overlay + voice
 ```
@@ -154,10 +163,43 @@ into the same approval-gated execution engine. Background reading:
 [OpenAI Realtime API guide](https://developers.openai.com/api/docs/guides/realtime),
 [AssemblyAI: how voice agents work](https://www.assemblyai.com/blog/ai-voice-agents).
 
+## Self-improvement
+
+The assistant can edit its **own source code**. Say something like *"add a
+setting to slow down your typing"* or *"make the widget remember its size"* and
+it will:
+
+1. **Read** its own files (an agentic loop with `list_files` / `read_file` /
+   `write_file` tools, all confined to the app's own directory by
+   `lib/selfedit.js` — no path traversal, source extensions only).
+2. **Rewrite** the relevant files to make the change.
+3. **Validate** the result: every touched `.js` is `node --check`ed and the smoke
+   suite (`npm test`) is run.
+4. **Keep or revert**: if validation fails (or you STOP it), the entire change
+   set is rolled back to the exact original bytes — so a bad self-edit can never
+   leave the app broken. Originals of a *successful* change are also stashed
+   under `.selfedit-backups/<timestamp>/` for manual rollback.
+
+A validated change is on disk but not yet running — **reload to apply**: say
+*"reload yourself"*, or click **Reload** in the prompt that appears. Turn on
+**Full Control** (Settings) if you want it to act on the self-edit without the
+per-step approval prompts (STOP still works).
+
+> ⚠️ Self-editing is powerful. The guardrails (sandboxed paths, validation,
+> auto-revert, backups) make it *safe to try*, but review changes you don't
+> understand before committing them, and keep STOP in reach.
+
+The engine (`lib/improver.js`) uses your normal `ANTHROPIC_MODEL` and the same
+API key — it talks to the Anthropic API directly, so it needs **API credits**
+(separate from any Claude subscription). It does **not** require the Claude
+desktop app.
+
 ## Safety
 
 - The web UI is sandboxed (`contextIsolation`, no `nodeIntegration`); it cannot
   reach Node, the filesystem, or your API key.
+- **Self-edits are sandboxed to the app's own directory, validated before they
+  count, and auto-reverted on any failure** (see Self-improvement).
 - **No autonomous run starts without an explicit approval click.**
 - Once running, you can stop instantly: the **STOP** button or the global
   **Ctrl/Cmd+Shift+X** kill switch, checked before every step.

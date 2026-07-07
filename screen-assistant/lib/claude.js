@@ -241,6 +241,33 @@ async function routeCommand(transcript, skillsContext, workflowsContext) {
       },
     },
     {
+      name: 'self_improve',
+      description:
+        "Modify the assistant's OWN source code — to add a feature, fix a bug, or change " +
+        'its behaviour or appearance. Use ONLY when the user asks the assistant to improve, ' +
+        'edit, upgrade, or change ITSELF (e.g. "make your orb bigger", "add a dark theme to ' +
+        'yourself", "fix the way you handle X"). Not for tasks on other apps.',
+      input_schema: {
+        type: 'object',
+        properties: { request: { type: 'string', description: 'The self-change to make, in full.' } },
+        required: ['request'],
+      },
+    },
+    {
+      name: 'set_autonomy',
+      description:
+        'Turn the assistant\'s autonomous "Full Control" mode ON or OFF. In Full Control it ' +
+        'carries out tasks without pausing for per-action approval (the STOP kill switch still ' +
+        'works). Use when the user says things like "act autonomously", "you have full control", ' +
+        '"stop asking me for permission" (enabled=true) or "ask before acting", "require ' +
+        'approval", "be careful" (enabled=false).',
+      input_schema: {
+        type: 'object',
+        properties: { enabled: { type: 'boolean' } },
+        required: ['enabled'],
+      },
+    },
+    {
       name: 'reply',
       description: 'Just answer or ask a clarifying question — no computer action.',
       input_schema: {
@@ -253,9 +280,11 @@ async function routeCommand(transcript, skillsContext, workflowsContext) {
 
   const system =
     'You are the intent router for a voice-driven desktop assistant. Given the user command, ' +
-    'their skill library, and their workflows, call exactly ONE tool: run_workflow if it matches ' +
-    'a saved workflow, run_skill if it matches a taught skill, run_goal for a concrete one-off ' +
-    'computer task, or reply otherwise. Prefer taught knowledge (workflow > skill) over run_goal.\n\n' +
+    'their skill library, and their workflows, call exactly ONE tool: set_autonomy if they ask ' +
+    'to change how much it asks permission, self_improve if they ask the assistant to change ' +
+    'ITSELF (its own code/behaviour/looks), run_workflow if it matches a saved workflow, ' +
+    'run_skill if it matches a taught skill, run_goal for a concrete one-off computer task, or ' +
+    'reply otherwise. Prefer taught knowledge (workflow > skill) over run_goal.\n\n' +
     'Skill library:\n' +
     skillsContext +
     '\n\nWorkflows:\n' +
@@ -276,6 +305,8 @@ async function routeCommand(transcript, skillsContext, workflowsContext) {
   if (call.name === 'run_skill') return { action: 'skill', skill_id: call.input.skill_id };
   if (call.name === 'run_workflow') return { action: 'workflow', workflow_id: call.input.workflow_id };
   if (call.name === 'run_goal') return { action: 'goal', goal: call.input.goal };
+  if (call.name === 'self_improve') return { action: 'self_improve', request: call.input.request };
+  if (call.name === 'set_autonomy') return { action: 'set_autonomy', enabled: Boolean(call.input.enabled) };
   return { action: 'reply', message: call.input.message || '' };
 }
 

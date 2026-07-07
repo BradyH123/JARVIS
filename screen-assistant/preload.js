@@ -36,6 +36,13 @@ contextBridge.exposeInMainWorld('assistant', {
   confirm: (payload) => ipcRenderer.invoke('assistant:confirm', payload),
   onAgentEvent: (cb) => ipcRenderer.on('agent:event', (_e, evt) => cb(evt)),
 
+  // Self-improvement — the assistant edits its own code, then relaunches to apply.
+  improve: {
+    run: (goal) => ipcRenderer.invoke('improve:run', goal),
+    relaunch: () => ipcRenderer.invoke('improve:relaunch'),
+  },
+  onImproveEvent: (cb) => ipcRenderer.on('improve:event', (_e, evt) => cb(evt)),
+
   // Phase 3: workflows (compositions of skills/goals).
   workflows: {
     list: () => ipcRenderer.invoke('workflows:list'),
