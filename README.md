@@ -63,7 +63,6 @@ feed, and quick counts of your skills and workflows. The full **workspace**
 ## Setup
 
 ```bash
-cd screen-assistant
 npm install
 npm start
 ```
@@ -148,16 +147,18 @@ Global shortcuts (work from anywhere):
 ## Project layout
 
 ```
-screen-assistant/
+jarvis/  (repo root)
 ├── main.js            Electron main (capture, IPC, shortcut)
 ├── preload.js         safe bridge to the UI
 ├── lib/
 │   ├── skills.js      skill memory store (skills.json)
 │   ├── claude.js      Anthropic calls: learn / chat / plan / route-command
 │   ├── executor.js    OS input layer (nut.js) — the "hands"
+│   ├── quickactions.js instant fast-path: open app / site / search (no screenshots)
 │   ├── agent.js       computer-use agentic loop + approval gate — the "brain"
 │   ├── selfedit.js    sandboxed self-editing engine (read/write/validate/revert)
 │   ├── improver.js    self-improvement loop — the assistant rewrites its own code
+│   ├── memory.js      Obsidian-style long-term memory vault
 │   └── monitor.js     Phase 2 in-memory watch buffer — continuous perception
 └── renderer/          Teach / Watch / Skills / Assistant tabs + run overlay + voice
 ```

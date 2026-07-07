@@ -1,7 +1,7 @@
 {
-  "name": "screen-assistant",
+  "name": "jarvis",
   "version": "0.1.0",
-  "description": "An AI desktop assistant that watches your screen, learns actions by demonstration, remembers them as named skills, and recalls them conversationally.",
+  "description": "JARVIS — an AI desktop assistant that lives on your Mac: watches the screen, learns skills by demonstration, controls the computer, edits its own code, and remembers you across sessions.",
   "main": "main.js",
   "author": "",
   "license": "MIT",
@@ -25,8 +25,8 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.screenassistant.app",
-    "productName": "Screen Assistant",
+    "appId": "com.jarvis.app",
+    "productName": "JARVIS",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [
       "main.js",

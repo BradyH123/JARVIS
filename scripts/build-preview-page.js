@@ -188,7 +188,7 @@ const html = `<style>
   </section>
 
   <div class="foot">
-    <div class="run">cd screen-assistant &nbsp;·&nbsp; npm install &nbsp;·&nbsp; npm start</div>
+    <div class="run">npm install &nbsp;·&nbsp; npm start</div>
     <div class="safe">
       <span>🔒 encrypted key</span><span>🖱 gated control</span><span>■ Ctrl/Cmd+Shift+X stop</span>
       <span>👁 private watch</span>
