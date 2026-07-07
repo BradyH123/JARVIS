@@ -74,6 +74,22 @@ const SELF_IMPROVE_TASK = (goal) =>
   'When done, run the tests with `node test/smoke.js` and make sure they pass. ' +
   'Finish with a one-line summary of what you changed.';
 
+// Goal for driving the user's ALREADY-OPEN Claude Code session by typing into it
+// (via computer-use), instead of spawning a hidden claude process. This is what
+// the user wants: use the real, authenticated on-screen session.
+const ONSCREEN_TASK = (request) =>
+  'Hand a coding task to the Claude Code session that is ALREADY OPEN on this computer ' +
+  '(a terminal window or the Claude app where `claude` / Claude Code is running). Do EXACTLY ' +
+  'these steps, then STOP:\n' +
+  '1. Bring that Claude Code window to the front (use the app switcher / Dock / click it). If ' +
+  'you cannot find an open Claude Code session, say so and stop.\n' +
+  '2. Click its message input box (usually at the bottom of that window).\n' +
+  '3. Type this message VERBATIM and then press Enter/Return to send it:\n' +
+  `   "${request}. Make this change in the JARVIS repository you are working in, keep the app ` +
+  'working, run node test/smoke.js, and commit the change with git when the tests pass."\n' +
+  '4. After pressing Enter, STOP immediately. Do not type anything else or take further ' +
+  'actions — the Claude Code session will do the work from here.';
+
 let mainWindow = null;
 let widgetWindow = null; // always-on-top JARVIS widget
 let tray = null; // menu-bar icon so the widget is always recoverable
@@ -623,6 +639,58 @@ function registerIpc() {
     } finally {
       improveRunning = false;
     }
+  });
+
+  // Preferred self-improvement: drive the user's ALREADY-OPEN Claude Code session
+  // by typing the request into it (computer-use), instead of spawning a hidden
+  // claude process. Uses the real, authenticated on-screen session.
+  ipcMain.handle('improve:onscreen', async (_e, request) => {
+    if (sessionRunning || improveRunning) return { status: 'busy' };
+    if (!executor.isAvailable()) {
+      return { status: 'error', message: 'Native input control is not available (see README).' };
+    }
+    const req = String(request || '').trim();
+    if (!req) return { status: 'error', message: 'Describe what to improve.' };
+
+    const send = (evt) => broadcast('agent:event', evt);
+    sessionAbort = false;
+    sessionRunning = true;
+    send({ type: 'started', goal: 'Handing this to your Claude Code session' });
+    memory.logTurn('assistant', `(delegated to on-screen Claude Code) ${req}`, 'widget');
+    try {
+      const result = await runSingleSession(null, ONSCREEN_TASK(req), send);
+      memory.logTurn('assistant', `(delegated task ${result.status}) ${req}`, 'widget');
+      send({ type: 'finished', ...result });
+      return result;
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    } finally {
+      sessionRunning = false;
+    }
+  });
+
+  // Upload: stage, commit, and push whatever the on-screen Claude Code session
+  // changed, so the new version is saved to GitHub. Then the user can reload.
+  ipcMain.handle('improve:commit', async (_e, message) => {
+    const send = (evt) => broadcast('improve:event', evt);
+    send({ type: 'started', goal: 'Uploading my new code' });
+    const msg = String(message || 'JARVIS self-improvement').replace(/"/g, "'").slice(0, 200);
+    return new Promise((resolve) => {
+      // Chain add → commit → push through the login shell so git creds resolve.
+      const script = `cd "${REPO_DIR}" && git add -A && git commit -m "${msg}" && git push`;
+      execFile(terminal.loginShell().cmd, [terminal.loginShell().flag, script], { timeout: 120000 }, (err, out, errOut) => {
+        const text = (String(out || '') + String(errOut || '')).trim();
+        if (err && !/nothing to commit/i.test(text)) {
+          send({ type: 'error', message: 'Upload failed: ' + text.slice(-200) });
+          send({ type: 'finished', status: 'error', message: text.slice(-200) });
+          return resolve({ status: 'error', message: text });
+        }
+        const nothing = /nothing to commit/i.test(text);
+        send({ type: 'finished', status: 'done', summary: nothing ? 'Nothing new to upload.' : 'Uploaded to GitHub.', changed: [], engine: 'git' });
+        resolve({ status: 'done', nothing });
+      });
+    });
   });
 
   // Self-update: pull the latest code from git, then relaunch to apply it.
