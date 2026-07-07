@@ -288,6 +288,23 @@ await test('WatchBuffer respects maxFrames and recent()', async () => {
     assert.strictEqual(d.jsonld.length, 1, 'parses JSON-LD');
   });
 
+  // --- filesystem sweep (index + ranked search) ---
+  const sweep = require('../lib/sweep');
+  await test('sweep indexes a folder and search ranks matches', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sa-sweep-'));
+    fs.writeFileSync(path.join(root, 'My Resume.pdf'), 'x');
+    fs.writeFileSync(path.join(root, 'budget-2026.xlsx'), 'x');
+    fs.mkdirSync(path.join(root, 'node_modules'));
+    fs.writeFileSync(path.join(root, 'node_modules', 'junk.js'), 'x'); // must be excluded
+    sweep.init(fs.mkdtempSync(path.join(os.tmpdir(), 'sa-idx-')));
+    const list = await sweep.sweep({ roots: [root] });
+    assert.ok(list.some((r) => r.name === 'My Resume.pdf'));
+    assert.ok(!list.some((r) => r.path.includes('node_modules')), 'excludes node_modules');
+    const hits = sweep.search('resume');
+    assert.ok(hits.length >= 1 && /Resume/.test(hits[0].name), 'search finds & ranks the resume');
+    assert.strictEqual(sweep.search('budget')[0].ext, 'xlsx');
+  });
+
   console.log(`\n${passed} test(s) passed.`);
 }
 

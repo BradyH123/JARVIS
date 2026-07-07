@@ -306,6 +306,53 @@ async function runCommand(text) {
   // Fast path: screen reads/summaries go STRAIGHT to the vision read, bypassing
   // the intent router (which sometimes replied "I'll do it" without an answer).
   // This is why "summarize this tab" said done but never reported back.
+  // Filesystem sweep — index files/apps so find & open are instant.
+  if (
+    api.sweep &&
+    /\b(sweep|index|scan|catalog|reindex)\b.*\b(computer|mac|files?|drive|documents?|everything|hard\s?drive|my stuff)\b/i.test(text)
+  ) {
+    const everything = /everything|whole|entire|all of|hard\s?drive/i.test(text);
+    log('info', everything ? '🗂 Full sweep of your computer…' : '🗂 Indexing your files…');
+    say(everything ? 'Doing a full sweep of your computer.' : 'Indexing your files so finding things is instant.', { interrupt: true });
+    await api.sweep.run({ everything });
+    return;
+  }
+  // Find / open a file from the index. Only hijack "open" when it clearly means a
+  // FILE (has an extension or file-ish words) — "open Safari/email" still routes.
+  {
+    const isFindVerb = /^\s*(find|locate|where('s| is)|search for)\b/i.test(text);
+    const isOpenFile =
+      /^\s*open\b/i.test(text) &&
+      /(\.\w{2,5}\b|\bfile\b|\bdocument\b|\bpdf\b|\bspreadsheet\b|\bphoto\b|\bimage\b|\bfolder\b|\bthe file\b|\bresume\b)/i.test(text);
+    if (api.sweep && (isFindVerb || isOpenFile) && !/\b(on (the )?web|internet|google|online)\b/i.test(text)) {
+      const query = text
+        .replace(/^\s*(find|locate|where('s| is)|search for|open)\b/i, '')
+        .replace(/\b(my|the|a|an|file|files|document|documents|folder|on my (computer|mac|drive))\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (query) {
+        const results = await api.sweep.search(query);
+        if (!results || !results.length) {
+          log('warn', `No indexed match for "${query}". Say "index my files" first if you haven't.`);
+          say(`I couldn't find ${query} in my index.`, { interrupt: true });
+          setState('idle');
+          return;
+        }
+        if (isOpenFile || /\bopen\b/i.test(text)) {
+          log('info', 'Opening ' + results[0].name);
+          say('Opening ' + results[0].name, { interrupt: true });
+          await api.sweep.open(results[0].path);
+          setState('idle');
+          return;
+        }
+        log('info', `Found ${results.length} for "${query}":`);
+        results.slice(0, 6).forEach((r) => log('think', (r.app ? '📱 ' : '📄 ') + r.name + '  —  ' + r.path));
+        say(`Found ${results.length}. Top match: ${results[0].name}.`);
+        setState('idle');
+        return;
+      }
+    }
+  }
   // DEEP crawl — follow links across the site. Checked before single-page harvest.
   if (
     api.crawl &&
