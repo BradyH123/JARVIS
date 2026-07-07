@@ -122,8 +122,20 @@ async function runSession(opts) {
 
   const system =
     'You are an autonomous desktop operator. You control the real computer via the ' +
-    'computer tool (mouse, keyboard). Work step by step toward the goal, taking a ' +
-    'screenshot to verify the result after meaningful actions. Be careful and precise. ' +
+    'computer tool (mouse, keyboard). Work step by step toward the goal. Be careful and precise.\n\n' +
+    'BE FAST AND EFFICIENT — every screenshot costs time and money, so minimize them:\n' +
+    '- Prefer the keyboard over the mouse. To open or switch to an app, use Spotlight: ' +
+    'press key "cmd+space", type the app name, then press "return". Do NOT hunt around the ' +
+    'dock, menu bar, or Launchpad clicking things — that is slow and error-prone.\n' +
+    '- Use known keyboard shortcuts directly (e.g. cmd+t new tab, cmd+l address bar, ' +
+    'cmd+space Spotlight) instead of visually locating buttons.\n' +
+    '- You already receive a fresh screenshot automatically after each real action, so do ' +
+    'NOT issue standalone "screenshot" actions just to look again. Only take an extra ' +
+    'screenshot when you genuinely need to confirm an ambiguous result.\n' +
+    '- Chain confident steps (type then press return) rather than pausing to re-verify ' +
+    'after every keystroke. Verify once, at meaningful checkpoints.\n' +
+    '- If an action is reported as unsupported or a no-op, do not repeat it — use the ' +
+    'current screenshot and continue with a different approach.\n\n' +
     'Before ANY destructive, irreversible, or outbound action (delete, overwrite, send, ' +
     'post, pay, submit-with-consequences, quit-with-unsaved-work), you MUST call the ' +
     'ask_permission tool first and only continue if it returns APPROVED. When the ' +
@@ -257,17 +269,18 @@ async function runSession(opts) {
         result = await execute(real);
       }
 
-      // Always return a fresh screenshot (except pure text results).
+      // Build the tool_result content. IMPORTANT: the API rejects an error
+      // tool_result that contains an image ("all content must be type text if
+      // is_error is true"), so error results are text-only.
       const content = [];
-      if (result.text) {
+      if (result.error) {
+        content.push({ type: 'text', text: 'Action failed: ' + result.error + '. Try a different approach.' });
+      } else if (result.text) {
         content.push({ type: 'text', text: result.text });
       } else {
         const shot = await capture();
         const img = dataUrlToImageBlock(shot.dataUrl);
         if (img) content.push(img);
-      }
-      if (result.error) {
-        content.push({ type: 'text', text: 'Action error: ' + result.error });
       }
 
       toolResults.push({

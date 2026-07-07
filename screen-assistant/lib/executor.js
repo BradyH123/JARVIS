@@ -211,7 +211,11 @@ async function perform(action) {
         break;
 
       default:
-        return { ok: false, error: 'Unsupported action: ' + a };
+        // Unknown/unsupported actions (e.g. zoom_region on some tool versions)
+        // are treated as a benign no-op rather than a hard error. Returning ok
+        // lets the loop hand back a fresh screenshot so the model can continue,
+        // instead of a 400-triggering error tool_result killing the whole run.
+        return { ok: true, text: `(“${a}” is not supported here — no-op; use the screenshot to proceed.)` };
     }
 
     // Small settle delay so the UI can react before the next screenshot.
