@@ -588,7 +588,12 @@ function registerIpc() {
     const lookStart = Date.now();
     try {
       const shot = await captureFrame();
-      const answer = await claude.describeScreen(q, shot);
+      let answer = await claude.describeScreen(q, shot);
+      if (!answer || !answer.trim()) {
+        answer =
+          "I couldn't read anything from the screen. Make sure the tab or window is visible " +
+          '(and that Screen Recording permission is granted in System Settings).';
+      }
       memory.logTurn('user', q, 'widget');
       memory.logTurn('assistant', answer, 'widget');
       telemetry.record({ kind: 'look', goal: q, status: 'done', durationMs: Date.now() - lookStart });

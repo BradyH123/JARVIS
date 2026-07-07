@@ -303,6 +303,20 @@ if (api.onWatchEvent) {
 async function runCommand(text) {
   if (!text.trim()) return;
   log('action', '❯ ' + text);
+  // Fast path: screen reads/summaries go STRAIGHT to the vision read, bypassing
+  // the intent router (which sometimes replied "I'll do it" without an answer).
+  // This is why "summarize this tab" said done but never reported back.
+  if (
+    api.lookAtScreen &&
+    /(summari[sz]e|what does (this|it) (say|mean|show)|what('| i)?s on (my|the) screen|what is on (my|the) screen|read (this|it|the|my screen)|look at (this|it|my screen|the screen|the tab|this tab)|what am i (looking at|seeing)|describe (this|my screen|the screen))/i.test(
+      text
+    )
+  ) {
+    log('info', '👁 Looking at your screen…');
+    say('Looking at your screen.', { interrupt: true });
+    await api.lookAtScreen(text);
+    return;
+  }
   // Fast path: "reload/restart yourself" applies self-edited code immediately,
   // without a round-trip to the intent router.
   if (/^\s*(reload|restart|relaunch)\s+(yourself|jarvis|the app)?\s*$/i.test(text)) {
