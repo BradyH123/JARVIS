@@ -297,6 +297,10 @@ async function runCommand(text) {
         log('info', 'Falling back to full control for: ' + routed.target);
         await api.execute({ goal: `${routed.kind.replace('_', ' ')} ${routed.target}` });
       }
+    } else if (routed.action === 'look_at_screen') {
+      log('info', '👁 Looking at your screen…');
+      say('Looking at your screen.', { interrupt: true });
+      await api.lookAtScreen(routed.question); // answer streams back via agent:event (done)
     } else if (routed.action === 'run_command') {
       log('info', '$ ' + routed.command);
       say('Running that in the terminal.', { interrupt: true });
