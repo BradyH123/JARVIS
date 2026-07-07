@@ -511,12 +511,18 @@ function registerIpc() {
   // Falls back to the full agent (via a returned flag) when unsupported.
   ipcMain.handle('assistant:quick', async (_e, payload) => {
     const send = (evt) => broadcast('agent:event', evt);
+    const k = payload && payload.kind;
+    const t = payload && payload.target;
     const label =
-      payload && payload.kind === 'open_app'
-        ? `Opening ${payload.target}`
-        : payload && payload.kind === 'web_search'
-        ? `Searching for ${payload.target}`
-        : `Opening ${payload && payload.target}`;
+      k === 'open_app'
+        ? `Opening ${t}`
+        : k === 'web_search'
+        ? `Searching for ${t}`
+        : k === 'quit_app'
+        ? `Closing ${t}`
+        : k === 'close_tabs'
+        ? 'Closing browser tabs'
+        : `Opening ${t}`;
     send({ type: 'started', goal: label });
     const result = await quickactions.perform(payload || {});
     if (result.ok) {

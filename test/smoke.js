@@ -195,6 +195,13 @@ await test('WatchBuffer respects maxFrames and recent()', async () => {
     assert.strictEqual(quick.normalizeUrl('pizza near me'), null, 'a phrase is not a URL');
     assert.strictEqual(quick.normalizeUrl(''), null);
   });
+  await test('quickactions refuses to quit JARVIS itself', async () => {
+    for (const self of ['JARVIS', 'Assistant', 'Electron']) {
+      const r = await quick.quitApp(self);
+      assert.strictEqual(r.ok, false, `must not quit ${self}`);
+      assert.ok(/myself/i.test(r.error || ''), 'explains it refuses self-quit');
+    }
+  });
 
   // --- Claude Code self-improvement engine (pure helpers) ---
   const claudecode = require('../lib/claudecode');
