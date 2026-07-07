@@ -177,11 +177,16 @@ async function runSession(opts) {
       });
     } catch (err) {
       let message = err.message || String(err);
-      // Turn an opaque tool/model rejection into an actionable hint.
-      if (/tool|beta|model|not.*support|400|invalid/i.test(message)) {
+      // Only blame the model/tool config when the error genuinely looks like a
+      // computer-use support problem — matching a bare "400"/"invalid" is too
+      // broad and sends the user chasing a Settings change for unrelated errors
+      // (malformed request, rate limit, credit balance, etc.).
+      if (/not.*(support|enabled|available)|unsupported|no such tool|unknown tool|(tool|beta).*(invalid|not|unknown)|does not support/i.test(message)) {
         message +=
           `  (Computer-use may not be enabled for model "${MODEL}" with tool ` +
           `"${TOOL_TYPE}" / beta "${BETA_FLAG}". Set a supported model in Settings.)`;
+      } else if (/credit balance|billing|quota|insufficient/i.test(message)) {
+        message += '  (Your Anthropic API account is out of credits. Add credits at console.anthropic.com → Billing.)';
       }
       onEvent({ type: 'error', message });
       return { status: 'error', steps: step, message };
