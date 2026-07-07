@@ -15,6 +15,7 @@
 
 require('dotenv').config();
 
+const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const {
@@ -617,6 +618,71 @@ function registerIpc() {
       return { status: 'done', answer };
     } catch (err) {
       telemetry.record({ kind: 'look', goal: q, status: 'error', error: err.message, durationMs: Date.now() - lookStart });
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    }
+  });
+
+  // Full data harvest: pull EVERYTHING from the page(s) the user is on and save
+  // it to disk (JSON in the vault's Harvests/ folder), for one tab or all tabs.
+  const saveHarvest = (pages) => {
+    const base = memory.vaultPath()
+      ? path.join(memory.vaultPath(), 'Harvests')
+      : path.join(app.getPath('userData'), 'Harvests');
+    fs.mkdirSync(base, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const files = [];
+    pages.forEach((p, i) => {
+      const slug =
+        String(p.title || p.url || 'page-' + i)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 50) || 'page';
+      const file = path.join(base, `${stamp}-${slug}.json`);
+      fs.writeFileSync(file, JSON.stringify(p, null, 2), 'utf8');
+      files.push(file);
+    });
+    return { dir: base, files };
+  };
+  const totals = (pages) =>
+    pages.reduce(
+      (a, p) => {
+        const c = p.counts || {};
+        a.links += c.links || 0;
+        a.images += c.images || 0;
+        a.tables += c.tables || 0;
+        a.chars += (p.text || '').length;
+        return a;
+      },
+      { links: 0, images: 0, tables: 0, chars: 0 }
+    );
+
+  ipcMain.handle('webpage:harvest', async (_e, allTabs) => {
+    const send = (evt) => broadcast('agent:event', evt);
+    send({ type: 'started', goal: allTabs ? 'Pulling all data from every open tab' : 'Pulling all data from this page' });
+    send({ type: 'action', detail: '📥 extracting page data…' });
+    try {
+      const res = allTabs ? await webpage.harvestAllTabs() : await webpage.harvestActiveTab();
+      const pages = res.pages || (res.ok ? [res] : []);
+      if (!res.ok || !pages.length) {
+        const msg = res.error || 'Nothing to harvest.';
+        send({ type: 'error', message: msg });
+        send({ type: 'finished', status: 'error', message: msg });
+        return { status: 'error', message: msg };
+      }
+      const { dir, files } = saveHarvest(pages);
+      const t = totals(pages);
+      const msg =
+        `Pulled ${pages.length} page(s): ${t.links} links, ${t.images} images, ${t.tables} tables, ` +
+        `${Math.round(t.chars / 1000)}k chars of text + full HTML. Saved to ${dir}.`;
+      memory.logTurn('assistant', `(harvested ${pages.length} page(s)) ${pages.map((p) => p.url).join(', ')}`.slice(0, 500), 'widget');
+      telemetry.record({ kind: 'harvest', goal: allTabs ? 'all tabs' : 'active tab', status: 'done' });
+      send({ type: 'done', message: msg });
+      send({ type: 'finished', status: 'done', message: msg });
+      return { status: 'done', dir, files, pages: pages.length, totals: t };
+    } catch (err) {
       send({ type: 'error', message: err.message });
       send({ type: 'finished', status: 'error', message: err.message });
       return { status: 'error', message: err.message };
