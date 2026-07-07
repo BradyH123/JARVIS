@@ -537,6 +537,29 @@ function registerIpc() {
     return { status: 'fallback', message: result.error };
   });
 
+  // Look at the screen and ANSWER / summarize (a one-shot vision read, not the
+  // action loop). This is why "summarize this tab" never returned anything before
+  // — it was going to the action loop, which has nothing to click.
+  ipcMain.handle('assistant:look', async (_e, question) => {
+    const send = (evt) => broadcast('agent:event', evt);
+    const q = String(question || '').trim() || 'Summarize what is on my screen.';
+    send({ type: 'started', goal: 'Looking at your screen' });
+    send({ type: 'action', detail: '👁 reading the screen…' });
+    try {
+      const shot = await captureFrame();
+      const answer = await claude.describeScreen(q, shot);
+      memory.logTurn('user', q, 'widget');
+      memory.logTurn('assistant', answer, 'widget');
+      send({ type: 'done', message: answer });
+      send({ type: 'finished', status: 'done', message: answer });
+      return { status: 'done', answer };
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    }
+  });
+
   // Terminal capability: run a real shell command and stream its output. This is
   // powerful, so destructive-looking commands ALWAYS ask for approval (even in
   // Full Control); STOP kills the process; output is streamed and logged.
