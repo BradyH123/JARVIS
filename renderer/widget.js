@@ -274,6 +274,12 @@ async function runCommand(text) {
     await api.improve.selfUpdate();
     return;
   }
+  if (/^\s*(upload|commit|save|push)\s+(yourself|jarvis|your code|the changes)?\s*$/i.test(text)) {
+    say('Committing and pushing my new code.', { interrupt: true });
+    log('info', 'Uploading my changes to GitHub…');
+    await api.improve.commit();
+    return;
+  }
   setState('thinking');
   try {
     const routed = await api.command(text);
@@ -299,9 +305,12 @@ async function runCommand(text) {
       log('info', 'Goal: ' + routed.goal);
       await api.execute({ goal: routed.goal });
     } else if (routed.action === 'self_improve') {
-      log('info', '🛠 Improving myself: ' + routed.request);
-      say('Editing my own code now. ' + routed.request, { interrupt: true });
-      await api.improve.run(routed.request);
+      // Drive the user's OPEN Claude Code session (type into it) rather than
+      // spawning a hidden claude process.
+      log('info', '🛠 Handing this to your Claude Code session: ' + routed.request);
+      say('Opening your Claude Code session and typing the request in.', { interrupt: true });
+      await api.improve.viaScreen(routed.request);
+      log('info', 'Sent. When Claude Code finishes, say "upload yourself" then "reload yourself".');
     } else if (routed.action === 'set_autonomy') {
       await api.settings.update({ fullControl: routed.enabled });
       const msg = routed.enabled

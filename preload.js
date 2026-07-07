@@ -42,6 +42,8 @@ contextBridge.exposeInMainWorld('assistant', {
   // available), then relaunches to apply. selfUpdate git-pulls the latest.
   improve: {
     run: (goal) => ipcRenderer.invoke('improve:run', goal),
+    viaScreen: (request) => ipcRenderer.invoke('improve:onscreen', request),
+    commit: (message) => ipcRenderer.invoke('improve:commit', message),
     selfUpdate: () => ipcRenderer.invoke('improve:selfupdate'),
     relaunch: () => ipcRenderer.invoke('improve:relaunch'),
   },

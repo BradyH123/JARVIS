@@ -216,24 +216,29 @@ A validated change is on disk but not yet running — **reload to apply**: say
 **Full Control** (Settings) if you want it to act on the self-edit without the
 per-step approval prompts (STOP still works).
 
-### Powered by Claude Code (when available)
+### Default: drive your OPEN Claude Code session
 
-If the **Claude Code CLI** (`claude`) is installed and authenticated on your
-machine, JARVIS uses it as his self-improvement engine instead of the built-in
-editor — he shells out to `claude` headless, pointed at his **own repository**,
-so he gets full agentic coding: multi-file edits, running the tests, git, the
-works. This is the most capable mode and is preferred automatically
-(`lib/claudecode.js`); the built-in `lib/improver.js` is the fallback when the
-CLI isn't present. Runs as:
+When you ask JARVIS to *"improve yourself: …"*, he uses **computer-use to type the
+request into the Claude Code session you already have open** — the same real,
+authenticated window you'd use by hand. He brings it to the front, types the task
+into its input, and presses Enter, then stops and lets that session do the work.
 
-```
-claude -p "<task>" --output-format stream-json --verbose \
-       --dangerously-skip-permissions --model <model>
-```
+This is the preferred model because it uses your **already-logged-in** Claude Code
+(no separate auth, no hidden process). The flow is:
 
-in the repo root, streaming its edits/commands to the widget. Because this drives
-real agentic coding on his own source, it only works when JARVIS is launched
-from a git checkout (`npm start`), not a packaged build. STOP kills the run.
+1. *"improve yourself: add a dark theme"* → JARVIS types it into your Claude Code.
+2. Claude Code makes the changes in this repo and commits (as instructed).
+3. *"upload yourself"* → JARVIS runs `git add -A && git commit && git push`.
+4. *"reload yourself"* → JARVIS relaunches into the new version.
+
+### Alternative: internal Claude Code / built-in editor
+
+There's also an internal path (`lib/claudecode.js`) that shells out to a headless
+`claude -p` in the repo, and a pure-API fallback editor (`lib/improver.js`) that
+reads/writes/validates files directly. These are used by the `improve.run`
+channel; the on-screen approach above avoids their authentication pitfalls by
+reusing your live session. All modes only work from a git checkout (`npm start`),
+not a packaged build, and STOP kills any run.
 
 ### Self-update
 
