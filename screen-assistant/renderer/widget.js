@@ -34,15 +34,34 @@ if (speech.synth) {
   speech.synth.onvoiceschanged = pickVoice;
 }
 let lastSpoken = '';
+// Keep spoken replies short: read at most the first couple of sentences (or
+// ~220 chars) so a long answer doesn't turn into a monologue. The full text
+// still appears in the feed — this only trims what's spoken aloud.
+function speakable(text) {
+  const clean = String(text)
+    .replace(/[🧠➤⏸✓✗●■◇⛓]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (clean.length <= 220) return clean;
+  const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
+  let out = '';
+  for (const s of sentences) {
+    if ((out + s).length > 220) break;
+    out += s;
+  }
+  out = (out || clean.slice(0, 220)).trim();
+  return out.length < clean.length ? out + ' …' : out;
+}
+
 function say(text, { interrupt = false } = {}) {
   if (!speech.on || !speech.synth || !text) return;
-  const clean = String(text).replace(/[🧠➤⏸✓✗●■◇⛓]/g, '').trim();
+  const clean = speakable(text);
   if (!clean || clean === lastSpoken) return;
   lastSpoken = clean;
   if (interrupt) speech.synth.cancel();
   const u = new SpeechSynthesisUtterance(clean);
   if (speech.voice) u.voice = speech.voice;
-  u.rate = 1.02;
+  u.rate = 1.35; // brisker, more JARVIS-like delivery
   u.pitch = 0.9;
   speech.synth.speak(u);
 }
@@ -362,10 +381,10 @@ if (!SR) {
       voiceUnavailable = true;
       micBtn.classList.remove('listening');
       micBtn.textContent = '🎙';
-      micBtn.title = 'Live voice-to-text is not available in this build — type your command instead';
-      if (current === 'listening') setState('idle', 'Voice STT unavailable — type instead');
-      log('warn', "Voice recognition isn't available in this build (no speech backend). Type your command — everything else works the same.");
-      say("Live voice typing isn't available in this build, so please type your command. I'll still speak back.", { interrupt: true });
+      micBtn.title = 'Click to dictate with macOS (Fn Fn), or just type';
+      if (current === 'listening') setState('idle', 'Tip: Fn Fn to dictate, or type');
+      log('warn', "Built-in voice recognition isn't available (Electron has no speech backend). Use macOS Dictation — press Fn (🌐) twice in the box — or type. Everything else works the same.");
+      say("I can't transcribe directly here. Press the fn key twice to dictate into the box.", { interrupt: true });
     } else if (ev.error === 'audio-capture') {
       listening = false;
       voiceUnavailable = true;
@@ -378,10 +397,12 @@ if (!SR) {
   function startListening() {
     if (listening) return;
     if (voiceUnavailable) {
-      // Don't fake a listening state we can't fulfil — point the user at typing.
-      log('warn', "Voice-to-text isn't available in this build. Type your command below — I'll still reply out loud.");
-      say("Voice typing isn't available here, so please type your command.", { interrupt: true });
+      // Electron can't transcribe, but macOS Dictation can — it types into the
+      // focused field. Focus the command box and point the user at it so they
+      // still get real voice input with no extra service.
       cmd.focus();
+      log('info', '🎙 Use macOS Dictation: press the Fn (🌐) key twice, speak, then Enter. I\'ll do the rest.');
+      say('Press the fn key twice to dictate into the box, then hit enter.', { interrupt: true });
       return;
     }
     listening = true;
