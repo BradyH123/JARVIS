@@ -23,7 +23,10 @@ const {
   desktopCapturer,
   globalShortcut,
   ipcMain,
+  Menu,
+  nativeImage,
   screen,
+  Tray,
 } = require('electron');
 
 const config = require('./lib/config');
@@ -36,6 +39,13 @@ const { WatchBuffer } = require('./lib/monitor');
 
 let mainWindow = null;
 let widgetWindow = null; // always-on-top JARVIS widget
+let tray = null; // menu-bar icon so the widget is always recoverable
+
+function showWidget() {
+  if (!widgetWindow || widgetWindow.isDestroyed()) createWidget();
+  else widgetWindow.show();
+  widgetWindow.focus();
+}
 let store = null;
 let workflows = null; // Phase 3 workflow store
 let watch = null; // Phase 2 always-on capture buffer
@@ -182,6 +192,28 @@ function setWidgetCollapsed(collapsed) {
   });
   config.setWidgetState({ collapsed: widgetCollapsed });
   widgetWindow.webContents.send('widget:collapsed', widgetCollapsed);
+}
+
+// A menu-bar / system-tray icon. This is the safety net: however the widget is
+// hidden or collapsed, the tray always brings it back.
+function createTray() {
+  if (tray) return;
+  let icon = nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.png'));
+  if (!icon.isEmpty()) {
+    icon = icon.resize({ width: 18, height: 18 });
+    icon.setTemplateImage(true);
+  }
+  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+  tray.setToolTip('Screen Assistant');
+  const menu = Menu.buildFromTemplate([
+    { label: 'Show assistant', click: () => showWidget() },
+    { label: 'Open workspace', click: () => createWindow(true) },
+    { type: 'separator' },
+    { label: 'Quit', click: () => app.quit() },
+  ]);
+  tray.setContextMenu(menu);
+  // A left-click just brings the widget back — the common case.
+  tray.on('click', () => showWidget());
 }
 
 /**
@@ -516,6 +548,7 @@ app.whenReady().then(() => {
     onTick: (status) => broadcast('watch:event', status),
   });
   registerIpc();
+  createTray(); // menu-bar safety net — the widget can always be brought back
   createWidget(); // the JARVIS widget is the primary, always-on surface
   // First run (no key yet): open the workspace so the onboarding wizard is
   // actually visible. Otherwise keep it preloaded but hidden until summoned.
