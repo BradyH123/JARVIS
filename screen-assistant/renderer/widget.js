@@ -212,8 +212,14 @@ async function runCommand(text) {
       setState('idle');
     }
   } catch (e) {
-    log('error', e.message);
-    setState('error');
+    if (/API key/i.test(e.message || '')) {
+      log('warn', 'No API key yet — opening the workspace so you can add one.');
+      setState('idle', 'Add your key in Settings (⚙), then try again');
+      api.openDashboard();
+    } else {
+      log('error', e.message);
+      setState('error');
+    }
   }
 }
 

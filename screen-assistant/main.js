@@ -517,7 +517,9 @@ app.whenReady().then(() => {
   });
   registerIpc();
   createWidget(); // the JARVIS widget is the primary, always-on surface
-  createWindow(false); // dashboard preloaded but hidden until summoned
+  // First run (no key yet): open the workspace so the onboarding wizard is
+  // actually visible. Otherwise keep it preloaded but hidden until summoned.
+  createWindow(!config.getApiKey());
   registerShortcuts();
 
   app.on('activate', () => {
