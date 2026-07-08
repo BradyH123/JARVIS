@@ -45,6 +45,10 @@ const terminal = require('./lib/shell');
 const webpage = require('./lib/webpage');
 const crawler = require('./lib/crawler');
 const axtree = require('./lib/axtree');
+const windows = require('./lib/windows');
+const bgbrowser = require('./lib/bgbrowser');
+const ongoing = require('./lib/ongoing');
+const scheduler = require('./lib/scheduler');
 const claudeapp = require('./lib/claudeapp');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
@@ -114,6 +118,8 @@ let watch = null; // Phase 2 always-on capture buffer
 let sessionAbort = false; // kill switch for the autonomous loop
 let sessionRunning = false;
 let improveRunning = false; // the assistant is editing its own code
+let bgAbort = false; // kill switch for the background-browser loop
+let bgRunning = false; // a background web task is in progress (runs in parallel)
 let observing = false; // watch-and-learn loop is active
 let observeTimer = null;
 const OBSERVE_INTERVAL_MS = 120000; // summarize the user's activity every ~2 min
@@ -336,10 +342,14 @@ async function captureSized() {
   // Primary display first if we can identify it, else the first source.
   const source =
     sources.find((s) => String(s.display_id) === String(primary.id)) || sources[0];
-  const size = source.thumbnail.getSize();
   const jpeg = source.thumbnail.toJPEG(72); // 72% quality: small, still legible
   const dataUrl = 'data:image/jpeg;base64,' + jpeg.toString('base64');
-  return { dataUrl, width: size.width, height: size.height };
+  // Report the display's LOGICAL size (points), NOT the downscaled thumbnail's
+  // pixel size. This is the coordinate space nut.js actually moves the mouse in
+  // on macOS/Retina — the agent scales the model's click coordinates back into
+  // it, so clicks must land in points, not thumbnail pixels. Returning thumbnail
+  // pixels here compresses every click toward the top-left (missed targets).
+  return { dataUrl, width, height };
 }
 
 async function captureFrame() {
@@ -549,8 +559,137 @@ function registerIpc() {
 
   ipcMain.handle('assistant:stop', async () => {
     sessionAbort = true;
+    bgAbort = true; // also halt any background web task
+    ongoing.stop(); // and wind down any ongoing (always-online) tasks
     resolveAllConfirms(false); // unblock any pending permission prompt as denied
     return { stopped: true };
+  });
+
+  // Ongoing ("always online") tasks: open-ended work that runs cycle after
+  // cycle in the hidden background browser, accumulating findings into the
+  // memory vault, and NEVER stops until the user says so (or an optional time
+  // budget runs out). On finish it enhances its own work into a polished report.
+  ipcMain.handle('ongoing:start', async (_e, payload) => {
+    const goal = typeof payload === 'string' ? payload : payload && payload.goal;
+    const minutes = payload && Number(payload.minutes);
+    const g = String(goal || '').trim();
+    if (!g) return { error: 'What should I keep working on?' };
+    const send = (evt) => broadcast('agent:event', evt);
+    bgAbort = false; // a fresh task clears any earlier STOP
+
+    // Each cycle drives the ONE hidden browser — wait politely if a manual
+    // background task holds it, and never run two cycles into it at once.
+    const research = async (task, angle) => {
+      while (bgRunning && !task.stopRequested) await new Promise((r) => setTimeout(r, 400));
+      if (task.stopRequested) return { message: '' };
+      bgRunning = true;
+      try {
+        const prior = task.lastFinding ? `\nAlready noted (do NOT repeat, go deeper): ${task.lastFinding.slice(0, 500)}` : '';
+        // Stream only the cycle's thinking/actions — its 'done'/'finished'
+        // lifecycle events stay internal, or every cycle would announce "Done."
+        // and flip the widget out of its ONGOING state.
+        const cycleSend = (evt) => {
+          if (evt.type === 'thinking' || evt.type === 'action') send(evt);
+        };
+        return await bgbrowser.run(
+          `Research task: ${task.goal}\nThis cycle, focus on: ${angle}.${prior}\n` +
+            'Use search engines and authoritative sites. When you have gathered enough for this ' +
+            'cycle, call finish with a DETAILED summary of concrete findings — facts, numbers, ' +
+            'names, and the source sites/URLs they came from.',
+          // 15 steps/cycle: enough for search → open 2-3 sources → summarize.
+          { onEvent: cycleSend, shouldAbort: () => task.stopRequested || bgAbort, maxSteps: 15 }
+        );
+      } finally {
+        bgRunning = false;
+      }
+    };
+    // The "optimize/enhance after finishing" pass: raw notes → polished report.
+    const synthesize = (task, notes) =>
+      claude.answerFromText(
+        'Rewrite these accumulated research notes into a polished, well-organized report: ' +
+          'deduplicate, resolve contradictions (prefer cross-checked facts), organize with clear ' +
+          'headings, keep every concrete fact/number/source, and end with a short takeaways list.',
+        `Report: ${task.goal}`,
+        String(notes).slice(0, 60000)
+      );
+
+    const onEvent = (evt) => {
+      send(evt);
+      if (evt.type === 'ongoing-finished') {
+        memory.logTurn('assistant', `(ongoing ${evt.status} after ${evt.cycles} cycles) ${evt.goal} → ${evt.reportPath || evt.notePath}`, 'widget');
+        telemetry.record({ kind: 'ongoing', goal: evt.goal, status: evt.status, durationMs: 0 });
+      }
+    };
+    const notesDir = path.join(memory.vaultPath(), 'Research');
+    // 45s between cycles: an always-on task should sip credits, not gulp them —
+    // research doesn't get better by running cycles back-to-back.
+    const t = ongoing.start(
+      g,
+      { notesDir, pauseMs: 45000, minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : undefined },
+      { research, synthesize, onEvent }
+    );
+    if (t.error) return t;
+    memory.logTurn('user', `(ongoing) ${g}`, 'widget');
+    memory.logTurn('assistant', `(ongoing started) ${g} → ${t.notePath}`, 'widget');
+    telemetry.record({ kind: 'ongoing', goal: g, status: 'started', durationMs: 0 });
+    return t;
+  });
+
+  ipcMain.handle('ongoing:stop', async (_e, id) => ongoing.stop(id || undefined));
+  ipcMain.handle('ongoing:list', async () => {
+    const l = ongoing.list();
+    ongoing.prune();
+    return l;
+  });
+
+  // Scheduled actions: persistently run any command later / on a repeat.
+  ipcMain.handle('schedule:add', async (_e, payload) => {
+    const job = scheduler.add(payload && payload.command, payload && payload.when);
+    if (!job.error) memory.logTurn('assistant', `(scheduled) ${scheduler.describe(job)}`, 'widget');
+    return job.error ? job : { ...job, text: scheduler.describe(job) };
+  });
+  ipcMain.handle('schedule:list', async () => scheduler.list());
+  ipcMain.handle('schedule:remove', async (_e, id) => scheduler.remove(id));
+  ipcMain.handle('schedule:clear', async () => scheduler.clear());
+
+  // Background browser: complete a web task in a HIDDEN browser JARVIS drives via
+  // the DOM — off-screen, so the user keeps full use of their mouse/screen. Runs
+  // in parallel with foreground work; STOP (assistant:stop) halts it too.
+  ipcMain.handle('bgbrowser:run', async (_e, payload) => {
+    const goal = typeof payload === 'string' ? payload : payload && payload.goal;
+    const g = String(goal || '').trim();
+    if (!g) return { status: 'error', message: 'What should I do in the background?' };
+    if (bgRunning) return { status: 'busy', message: "I'm already running a background task. Say STOP to cancel it." };
+    const send = (evt) => broadcast('agent:event', { ...evt, background: true });
+    bgAbort = false;
+    bgRunning = true;
+    send({ type: 'started', goal: '🕶 (background) ' + g });
+    memory.logTurn('user', `(background) ${g}`, 'widget');
+    const t0 = Date.now();
+    try {
+      const res = await bgbrowser.run(g, {
+        onEvent: send,
+        shouldAbort: () => bgAbort,
+        startUrl: payload && payload.startUrl,
+      });
+      telemetry.record({ kind: 'background', goal: g, status: res.status, durationMs: Date.now() - t0 });
+      memory.logTurn('assistant', `(background ${res.status}) ${res.message || g}`, 'widget');
+      send({ type: 'finished', status: res.status, message: res.message, background: true });
+      return res;
+    } catch (err) {
+      send({ type: 'error', message: err.message, background: true });
+      send({ type: 'finished', status: 'error', message: err.message, background: true });
+      return { status: 'error', message: err.message };
+    } finally {
+      bgRunning = false;
+    }
+  });
+
+  // Close the hidden background browser (frees memory; logins persist in its
+  // own session partition and return next time).
+  ipcMain.handle('bgbrowser:close', async () => {
+    bgbrowser.close();
+    return { ok: true };
   });
 
   // Fast path: instant open-app / open-url / web-search with no screenshot loop.
@@ -582,6 +721,44 @@ function registerIpc() {
     // Unsupported (e.g. non-macOS): let the caller fall back to the agent.
     send({ type: 'finished', status: 'fallback' });
     return { status: 'fallback', message: result.error };
+  });
+
+  // How wide a lane to keep clear on the right for JARVIS's own orb — the width
+  // of the widget plus a margin, measured from its live position so tiled
+  // windows never end up hidden behind it.
+  function reservedLaneWidth() {
+    try {
+      const wa = screen.getPrimaryDisplay().workArea;
+      if (widgetWindow && !widgetWindow.isDestroyed()) {
+        const [wx] = widgetWindow.getPosition();
+        const [ww] = widgetWindow.getSize();
+        // Only reserve when the orb is docked toward the right edge.
+        if (wx + ww > wa.x + wa.width - 40) return Math.max(150, wa.x + wa.width - wx + 16);
+      }
+    } catch (_) {}
+    return 150;
+  }
+
+  // Organize the user's windows into a non-overlapping grid so JARVIS can see
+  // every open tab/window — reserving a lane for his own orb.
+  ipcMain.handle('windows:arrange', async () => {
+    const send = (evt) => broadcast('agent:event', evt);
+    send({ type: 'started', goal: 'Organizing your windows' });
+    const wa = screen.getPrimaryDisplay().workArea;
+    const t0 = Date.now();
+    const res = await windows.arrange(wa, { reserveRight: reservedLaneWidth() });
+    telemetry.record({ kind: 'windows', goal: 'arrange', status: res.ok ? 'done' : 'error', error: res.ok ? undefined : res.error, durationMs: Date.now() - t0 });
+    const msg = res.ok ? res.text : res.error || "I couldn't organize the windows.";
+    memory.logTurn('assistant', `(windows) ${msg}`, 'widget');
+    send({ type: res.ok ? 'done' : 'error', message: msg });
+    send({ type: 'finished', status: res.ok ? 'done' : 'error', message: msg });
+    return { status: res.ok ? 'done' : 'error', message: msg };
+  });
+
+  // List every visible window (app, title, bounds) — screenshot-free awareness.
+  ipcMain.handle('windows:list', async () => {
+    const res = await windows.list();
+    return res;
   });
 
   // Ask the user to approve something mid-run (reuses the confirm gate).
@@ -669,6 +846,10 @@ function registerIpc() {
             } else {
               r = ax.ok ? `no "${a.label}" element found` : ax.error;
             }
+          } else if (cap === 'organize_windows') {
+            const wa = screen.getPrimaryDisplay().workArea;
+            const w = await windows.arrange(wa, { reserveRight: reservedLaneWidth() });
+            r = w.ok ? w.text : w.error || 'failed';
           } else if (cap === 'computer') {
             const res = await runSingleSession(null, a.goal || g, send);
             r = res.status;
@@ -1452,6 +1633,17 @@ app.whenReady().then(() => {
   memory.init(vaultDir);
   telemetry.init(app.getPath('userData'));
   sweep.init(path.join(app.getPath('userData'), 'index'));
+  // Scheduled actions survive restarts; when one comes due, wake the widget and
+  // run the command through the normal pipeline (so a schedule can trigger
+  // anything JARVIS can do — quick actions, background/ongoing tasks, plans).
+  scheduler.init(app.getPath('userData'));
+  scheduler.startTicking((job) => {
+    memory.logTurn('assistant', `(schedule fired) ${job.command}`, 'widget');
+    telemetry.record({ kind: 'schedule', goal: job.command, status: 'fired', durationMs: 0 });
+    showWidget();
+    // Give the widget a beat to be ready before handing it the command.
+    setTimeout(() => broadcast('schedule:fire', { id: job.id, command: job.command, text: scheduler.describe(job) }), 600);
+  });
   watch = new WatchBuffer({
     capture: captureSized,
     intervalMs: config.getWatchIntervalMs(),

@@ -320,6 +320,13 @@ if (api.onWatchEvent) {
 async function runCommand(text) {
   if (!text.trim()) return;
   log('action', '❯ ' + text);
+  // STOP comes before everything — typed or spoken, it always obeys instantly.
+  if (/^\s*(stop|halt|cancel|abort|stand down|that'?s enough|enough)\s*[.!]?\s*$/i.test(text)) {
+    log('warn', 'Stop requested…');
+    await api.stop();
+    setState('idle');
+    return;
+  }
   // Fast path: screen reads/summaries go STRAIGHT to the vision read, bypassing
   // the intent router (which sometimes replied "I'll do it" without an answer).
   // This is why "summarize this tab" said done but never reported back.
@@ -530,6 +537,45 @@ async function runCommand(text) {
       return;
     }
   }
+  // Schedule management — list and cancel (creation goes through the router,
+  // which parses the natural-language time into a structured schedule).
+  if (api.schedule && /^\s*(what('s| is| do i have)? |list |show )?(my )?(scheduled( tasks?| actions?)?|schedules?|reminders?)\??\s*$/i.test(text)) {
+    const l = await api.schedule.list();
+    if (!l.length) {
+      log('info', 'Nothing scheduled.');
+      say('Nothing is scheduled right now.');
+    } else {
+      log('info', `${l.length} scheduled:`);
+      l.forEach((j) => log('think', '⏰ ' + j.text));
+      say(`You have ${l.length} scheduled task${l.length === 1 ? '' : 's'}.`);
+    }
+    setState('idle');
+    return;
+  }
+  if (api.schedule && /^\s*(cancel|clear|delete|remove)\s+(all\s+)?(my\s+)?(the\s+)?(scheduled( tasks?| actions?)?|schedules?|reminders?)\s*$/i.test(text)) {
+    const r = await api.schedule.clear();
+    log('info', `Cancelled ${r.removed} scheduled task(s).`);
+    say(r.removed ? 'Cancelled all scheduled tasks.' : 'There was nothing scheduled.', { interrupt: true });
+    setState('idle');
+    return;
+  }
+  // Background web task — "in the background, …", "quietly …", "while I keep
+  // working, …", "without taking over my screen, …". Runs in a hidden browser.
+  const bgM = /^\s*(?:in the background|behind the scenes|quietly|without (?:taking over|using) (?:my )?(?:screen|mouse)|while i(?:'m| am)? (?:keep )?(?:working|using|busy)[^,]*)[,:]?\s*(.+)/i.exec(text);
+  if (api.backgroundTask && bgM && bgM[1] && bgM[1].trim().length > 3) {
+    log('info', '🕶 Working in the background — your screen stays free.');
+    say('On it in the background. Keep working — I won\'t touch your screen.', { interrupt: true });
+    await api.backgroundTask(bgM[1].trim());
+    return;
+  }
+  // Instant "organize/arrange/tile my windows", "clean up my screen", "line up
+  // my windows", "fix my window layout" — tile everything so all tabs show.
+  if (api.arrangeWindows && /^\s*(organi[sz]e|arrange|tile|line up|clean up|fix|sort out|tidy)\b.*\b(windows?|screen|tabs?|layout|desktop)\b|^\s*(organi[sz]e|arrange|tile)\s+my\b|i can'?t see (all )?(my )?(the )?(tabs?|windows?)/i.test(text)) {
+    log('info', '🪟 Organizing your windows…');
+    say('Organizing your windows so I can see everything.', { interrupt: true });
+    await api.arrangeWindows();
+    return;
+  }
   // Prompt the Claude Code app directly: "prompt claude code: …", "tell claude
   // code to …", "in claude code, …", "ask claude to …".
   const ccM = /^\s*(?:prompt|tell|ask|in)\s+claude(?:\s+code)?[,:]?\s*(?:to\s+)?(.+)/i.exec(text);
@@ -614,6 +660,29 @@ async function runCommand(text) {
       say('Opening your Claude Code session and typing the request in.', { interrupt: true });
       await api.improve.viaScreen(routed.request);
       log('info', 'Sent. When Claude Code finishes, say "upload yourself" then "reload yourself".');
+    } else if (routed.action === 'schedule_task') {
+      const job = await api.schedule.add({ command: routed.command, when: routed.when });
+      if (job && job.error) {
+        log('warn', job.error);
+        say(job.error, { interrupt: true });
+      } else {
+        log('info', '⏰ Scheduled: ' + (job.text || routed.command));
+        say('Scheduled — ' + (job.text || routed.command) + '.', { interrupt: true });
+      }
+      setState('idle');
+    } else if (routed.action === 'ongoing_task') {
+      const mins = routed.minutes ? ` for ${routed.minutes} minutes` : '';
+      log('info', '♾ Ongoing task started' + mins + ' — I will keep working until you say stop.');
+      say('Starting an ongoing task' + mins + '. I\'ll keep at it until you tell me to stop.', { interrupt: true });
+      await api.ongoing.start({ goal: routed.goal, minutes: routed.minutes });
+    } else if (routed.action === 'background_task') {
+      log('info', '🕶 Working in the background — your screen stays free.');
+      say('On it in the background. Keep working — I won\'t touch your screen.', { interrupt: true });
+      await api.backgroundTask(routed.goal);
+    } else if (routed.action === 'organize_windows') {
+      log('info', '🪟 Organizing your windows…');
+      say('Organizing your windows so I can see everything.', { interrupt: true });
+      await api.arrangeWindows();
     } else if (routed.action === 'set_autonomy') {
       await api.settings.update({ fullControl: routed.enabled });
       const msg = routed.enabled
@@ -893,6 +962,32 @@ api.onAgentEvent((evt) => {
       setState('done');
       setTimeout(() => current === 'done' && setState('idle'), 4000);
       break;
+    // Ongoing ("always online") task lifecycle — shows as ONGOING, never idles
+    // out on its own; only 'ongoing-finished' releases the state.
+    case 'ongoing-started':
+      setState('running', '♾ ONGOING — say "stop" anytime');
+      log('info', '♾ Ongoing: ' + (evt.goal || '') + ' → notes in your memory vault');
+      break;
+    case 'ongoing-cycle':
+      setState('running', `♾ ONGOING — cycle ${evt.cycle} · say "stop" anytime`);
+      log('info', `♾ Cycle ${evt.cycle}: ${evt.angle || ''}`);
+      break;
+    case 'ongoing-finding':
+      if (evt.summary) log('think', '📝 ' + evt.summary);
+      break;
+    case 'ongoing-error':
+      log('warn', 'Cycle hit a snag (continuing): ' + (evt.message || ''));
+      break;
+    case 'ongoing-finishing':
+      setState('running', '♾ Polishing the work into a report…');
+      log('info', '♾ Enhancing the accumulated notes into a polished report…');
+      break;
+    case 'ongoing-finished':
+      log('info', `♾ ${evt.status === 'stopped' ? 'Stopped' : 'Finished'} after ${evt.cycles} cycle(s). ` + (evt.reportPath ? 'Polished report saved to your memory vault.' : 'Notes saved to your memory vault.'));
+      say(evt.status === 'stopped' ? 'Stopped. I polished what I had into a report in your memory vault.' : 'All done — the report is in your memory vault.', { interrupt: true });
+      setState('done');
+      setTimeout(() => current === 'done' && setState('idle'), 4000);
+      break;
     case 'finished':
       if (evt.status && evt.status !== 'done') {
         setState(evt.status === 'aborted' ? 'idle' : 'error');
@@ -1000,6 +1095,16 @@ function showReloadPrompt() {
     'I rewrote my own source. Reloading restarts me with the changes.';
   confirmBox.classList.remove('hidden');
   reloadPending = true;
+}
+
+// A schedule came due — run its command exactly as if the user typed it, so a
+// schedule can trigger anything JARVIS can do (quick actions, ongoing tasks…).
+if (api.onScheduleFire) {
+  api.onScheduleFire((job) => {
+    log('info', '⏰ Scheduled task fired: ' + (job.text || job.command));
+    say('Time for your scheduled task.', { interrupt: true });
+    runCommand(job.command);
+  });
 }
 
 setState('idle');
