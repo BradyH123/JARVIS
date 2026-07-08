@@ -843,6 +843,16 @@ async function runCommand(text) {
       log('info', '♾ Ongoing task started' + mins + ' — I will keep working until you say stop.');
       say('Starting an ongoing task' + mins + '. I\'ll keep at it until you tell me to stop.', { interrupt: true });
       await api.ongoing.start({ goal: routed.goal, minutes: routed.minutes });
+    } else if (routed.action === 'create_strategy') {
+      const job = await api.schedule.strategy({ source: routed.source, instruction: routed.instruction, when: routed.when, durationMinutes: routed.durationMinutes });
+      if (job && job.error) {
+        log('warn', job.error);
+        say(job.error, { interrupt: true });
+      } else {
+        log('info', '🧭 Strategy set: ' + (job.text || `read ${routed.source}`));
+        say(`Done. Each time, I'll read ${routed.source} and schedule tasks based on what I find. Say stop or cancel my schedules to end it.`, { interrupt: true });
+      }
+      setState('idle');
     } else if (routed.action === 'schedule_from_advice') {
       log('info', '📅 Reading the advice and building a schedule…');
       say('Reading the advice and scheduling the tasks it recommends.', { interrupt: true });

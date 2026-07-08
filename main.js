@@ -59,6 +59,60 @@ const frontmost = require('./lib/frontmost');
 // Refresh JARVIS's living self-model (Self.md): real version from git, what
 // he's learned, how he's performing, the shape of his memory. Called at
 // startup and after self-improvements so his self-awareness stays factual.
+// Run one cycle of a content-reactive strategy job: read its source, derive
+// content-specific tasks, and enqueue them as spaced one-off scheduled runs so
+// they execute one at a time. Bounded and deduped so it can't run away.
+async function runStrategy(job) {
+  const m = job.meta || {};
+  const send = (evt) => broadcast('agent:event', evt);
+  send({ type: 'started', goal: `🧭 Strategy: reading ${m.source}` });
+  try {
+    // Read the source in the background browser (off-screen).
+    const read = await bgbrowser.run(
+      `Open ${/^https?:|\./i.test(m.source) ? m.source : 'a reputable source for "' + m.source + '"'} and read the main content in full. ` +
+        'When you have the key items, call finish with a DETAILED summary of the specific ' +
+        'stories/items and their facts.',
+      { shouldAbort: () => bgAbort, maxSteps: 12 }
+    ).catch((e) => ({ status: 'error', message: e.message }));
+    const content = (read && read.message) || '';
+    if (!content || content.length < 20) {
+      send({ type: 'finished', status: 'error', message: `Couldn't read ${m.source} this time.` });
+      return;
+    }
+    // Track what this strategy already covered so daily runs don't repeat.
+    strategyMemory[job.id] = strategyMemory[job.id] || [];
+    const derived = await claude.deriveTasksFromContent(content, m.instruction, {
+      max: m.maxPerRun || 3,
+      alreadyDone: strategyMemory[job.id],
+    });
+    if (!derived.tasks.length) {
+      send({ type: 'done', message: `Read ${m.source}: nothing new worth a task today.` });
+      send({ type: 'finished', status: 'done' });
+      return;
+    }
+    // Enqueue each derived task as a one-off scheduled run, spaced a few minutes
+    // apart so they run sequentially (single-focus / credit-safe).
+    let queued = 0;
+    for (let i = 0; i < derived.tasks.length; i++) {
+      const t = derived.tasks[i];
+      const r = scheduler.add(t.command, { kind: 'once_in', minutes: 2 + i * 4 });
+      if (!r.error && !r.duplicate) {
+        queued++;
+        strategyMemory[job.id].push(t.command);
+      }
+      if (r.atCapacity) break;
+    }
+    if (strategyMemory[job.id].length > 60) strategyMemory[job.id] = strategyMemory[job.id].slice(-60);
+    const msg = `Strategy on ${m.source}: ${derived.summary} Scheduled ${queued} follow-up task(s).`;
+    memory.logTurn('assistant', `(strategy ran) ${msg}`, 'widget');
+    telemetry.record({ kind: 'strategy', goal: m.source, status: 'done', steps: queued, durationMs: 0 });
+    send({ type: 'done', message: msg });
+    send({ type: 'finished', status: 'done', message: msg });
+  } catch (err) {
+    send({ type: 'finished', status: 'error', message: err.message });
+  }
+}
+
 function refreshSelfModel() {
   execFile('git', ['log', '-6', '--format=%h %s (%as)'], { cwd: REPO_DIR, timeout: 5000 }, (err, out) => {
     const lines = String(out || '').split('\n').map((s) => s.trim()).filter(Boolean);
@@ -147,6 +201,7 @@ let sessionRunning = false;
 let improveRunning = false; // the assistant is editing its own code
 let bgAbort = false; // kill switch for the background-browser loop
 let bgRunning = false; // a background web task is in progress (runs in parallel)
+const strategyMemory = {}; // per-strategy-job list of already-covered task commands
 let observing = false; // watch-and-learn loop is active
 let observeTimer = null;
 const OBSERVE_INTERVAL_MS = 120000; // summarize the user's activity every ~2 min
@@ -765,6 +820,27 @@ function registerIpc() {
   ipcMain.handle('schedule:list', async () => scheduler.list());
   ipcMain.handle('schedule:remove', async (_e, id) => scheduler.remove(id));
   ipcMain.handle('schedule:clear', async () => scheduler.clear());
+
+  // Create a content-reactive STRATEGY: "every day for 2 months, read the news
+  // and schedule tasks to look into the stories deeper and build reports". It's
+  // a recurring scheduled task whose meta tells the fire handler to read a
+  // source and derive content-specific follow-up tasks each time.
+  ipcMain.handle('strategy:create', async (_e, payload) => {
+    const p = payload || {};
+    const source = String(p.source || '').trim(); // e.g. "the news", "news.google.com"
+    const instruction = String(p.instruction || '').trim(); // "look into stories deeper and build reports"
+    if (!source || !instruction) return { error: 'A strategy needs a source to read and what to do with it.' };
+    const when = p.when || { kind: 'daily', time: p.time || '08:00' };
+    const durationMinutes = Number(p.durationMinutes) > 0 ? Number(p.durationMinutes) : undefined;
+    const job = scheduler.add(
+      `Strategy: read ${source} → ${instruction}`,
+      when,
+      { durationMinutes, meta: { kind: 'strategy', source, instruction, maxPerRun: Math.min(Number(p.maxPerRun) || 3, 5) } }
+    );
+    if (job.error) return job;
+    memory.logTurn('assistant', `(strategy created) ${scheduler.describe(job)}`, 'widget');
+    return { ...job, text: scheduler.describe(job) };
+  });
 
   // Read the advice on screen (Polsia AI, ChatGPT, …) and SET UP A SCHEDULE from
   // it — each recommended task becomes a recurring job with a cadence AND a
@@ -2017,6 +2093,12 @@ app.whenReady().then(() => {
   // anything JARVIS can do — quick actions, background/ongoing tasks, plans).
   scheduler.init(app.getPath('userData'));
   scheduler.startTicking((job) => {
+    // A content-reactive STRATEGY reads a source and spawns content-specific
+    // tasks, instead of firing its command verbatim.
+    if (job.meta && job.meta.kind === 'strategy') {
+      runStrategy(job).catch(() => {});
+      return;
+    }
     memory.logTurn('assistant', `(schedule fired) ${job.command}`, 'widget');
     telemetry.record({ kind: 'schedule', goal: job.command, status: 'fired', durationMs: 0 });
     showWidget();

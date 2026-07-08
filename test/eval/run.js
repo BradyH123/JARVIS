@@ -241,6 +241,16 @@ check('autonomy: scheduler computes fire times, persists, and ticks correctly', 
   // …and is removed once the lifespan elapses (no fire, gone from the list).
   assert.strictEqual(sched.tick(t0 + 130000, () => {}).length, 0, 'no fire past expiry');
   assert.ok(!sched.list().some((j) => j.command === 'post an update'), 'expired task removed');
+
+  // Strategy jobs carry structured meta and a finite duration (e.g. 2 months),
+  // so a content-reactive strategy is bounded and self-describing.
+  const strat = sched.add(
+    'Strategy: read the news → build reports',
+    { kind: 'daily', time: '08:00' },
+    { durationMinutes: 60 * 24 * 60, meta: { kind: 'strategy', source: 'the news', instruction: 'build reports', maxPerRun: 3 } }
+  );
+  assert.ok(strat.meta && strat.meta.kind === 'strategy' && strat.meta.source === 'the news', 'strategy meta stored');
+  assert.ok(strat.expiresAt, 'strategy is bounded by a duration');
   sched.clear();
 });
 
