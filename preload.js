@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld('assistant', {
   promptClaudeCode: (text) => ipcRenderer.invoke('claudecode:prompt', text),
   arrangeWindows: () => ipcRenderer.invoke('windows:arrange'),
   listWindows: () => ipcRenderer.invoke('windows:list'),
+  backgroundTask: (goal) => ipcRenderer.invoke('bgbrowser:run', goal),
+  closeBackgroundBrowser: () => ipcRenderer.invoke('bgbrowser:close'),
   harvest: (allTabs) => ipcRenderer.invoke('webpage:harvest', allTabs),
   crawl: (opts) => ipcRenderer.invoke('webpage:crawl', opts),
   sweep: {

@@ -95,6 +95,21 @@ check('grounding: window grid tiles without overlap, inside the work area', 'cor
   assert.strictEqual(w.gridCells(0, area, 8).length, 0);
 });
 
+check('grounding: background browser builds a safe locator + page block', 'correctness', () => {
+  const bg = R('bgbrowser.js');
+  // A ref target resolves by data-jarvis-ref; text targets fall back to fuzzy match.
+  const jsRef = bg.locatorJs('12', 'el.click();');
+  assert.ok(/data-jarvis-ref/.test(jsRef), 'ref locator queries the ref attribute');
+  assert.ok(jsRef.includes('el.click();'), 'verb is embedded');
+  // Quotes/backslashes in a target must be JSON-escaped, not break out of the JS.
+  const jsHostile = bg.locatorJs('"; alert(1); //', 'el.click();');
+  assert.ok(!/^\s*"; alert/m.test(jsHostile), 'target is safely serialized');
+  assert.ok(jsHostile.includes(JSON.stringify('"; alert(1); //')), 'target JSON-encoded');
+  // pageBlock renders url/title/text + a ref-tagged element map.
+  const block = bg.pageBlock({ url: 'https://x.io', title: 'T', text: 'hello', interface: [{ ref: 0, tag: 'a', type: 'link', label: 'Home', href: '/h' }] });
+  assert.ok(/URL: https:\/\/x\.io/.test(block) && /\[0\] a\(link\) "Home"/.test(block));
+});
+
 // ---------- CORRECTNESS ----------
 check('correctness: URL normalization', 'correctness', () => {
   const { normalizeUrl } = R('quickactions.js');

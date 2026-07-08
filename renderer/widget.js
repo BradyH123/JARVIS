@@ -530,6 +530,15 @@ async function runCommand(text) {
       return;
     }
   }
+  // Background web task — "in the background, …", "quietly …", "while I keep
+  // working, …", "without taking over my screen, …". Runs in a hidden browser.
+  const bgM = /^\s*(?:in the background|behind the scenes|quietly|without (?:taking over|using) (?:my )?(?:screen|mouse)|while i(?:'m| am)? (?:keep )?(?:working|using|busy)[^,]*)[,:]?\s*(.+)/i.exec(text);
+  if (api.backgroundTask && bgM && bgM[1] && bgM[1].trim().length > 3) {
+    log('info', '🕶 Working in the background — your screen stays free.');
+    say('On it in the background. Keep working — I won\'t touch your screen.', { interrupt: true });
+    await api.backgroundTask(bgM[1].trim());
+    return;
+  }
   // Instant "organize/arrange/tile my windows", "clean up my screen", "line up
   // my windows", "fix my window layout" — tile everything so all tabs show.
   if (api.arrangeWindows && /^\s*(organi[sz]e|arrange|tile|line up|clean up|fix|sort out|tidy)\b.*\b(windows?|screen|tabs?|layout|desktop)\b|^\s*(organi[sz]e|arrange|tile)\s+my\b|i can'?t see (all )?(my )?(the )?(tabs?|windows?)/i.test(text)) {
@@ -622,6 +631,10 @@ async function runCommand(text) {
       say('Opening your Claude Code session and typing the request in.', { interrupt: true });
       await api.improve.viaScreen(routed.request);
       log('info', 'Sent. When Claude Code finishes, say "upload yourself" then "reload yourself".');
+    } else if (routed.action === 'background_task') {
+      log('info', '🕶 Working in the background — your screen stays free.');
+      say('On it in the background. Keep working — I won\'t touch your screen.', { interrupt: true });
+      await api.backgroundTask(routed.goal);
     } else if (routed.action === 'organize_windows') {
       log('info', '🪟 Organizing your windows…');
       say('Organizing your windows so I can see everything.', { interrupt: true });

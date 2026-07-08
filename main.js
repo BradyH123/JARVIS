@@ -46,6 +46,7 @@ const webpage = require('./lib/webpage');
 const crawler = require('./lib/crawler');
 const axtree = require('./lib/axtree');
 const windows = require('./lib/windows');
+const bgbrowser = require('./lib/bgbrowser');
 const claudeapp = require('./lib/claudeapp');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
@@ -115,6 +116,8 @@ let watch = null; // Phase 2 always-on capture buffer
 let sessionAbort = false; // kill switch for the autonomous loop
 let sessionRunning = false;
 let improveRunning = false; // the assistant is editing its own code
+let bgAbort = false; // kill switch for the background-browser loop
+let bgRunning = false; // a background web task is in progress (runs in parallel)
 let observing = false; // watch-and-learn loop is active
 let observeTimer = null;
 const OBSERVE_INTERVAL_MS = 120000; // summarize the user's activity every ~2 min
@@ -554,8 +557,49 @@ function registerIpc() {
 
   ipcMain.handle('assistant:stop', async () => {
     sessionAbort = true;
+    bgAbort = true; // also halt any background web task
     resolveAllConfirms(false); // unblock any pending permission prompt as denied
     return { stopped: true };
+  });
+
+  // Background browser: complete a web task in a HIDDEN browser JARVIS drives via
+  // the DOM — off-screen, so the user keeps full use of their mouse/screen. Runs
+  // in parallel with foreground work; STOP (assistant:stop) halts it too.
+  ipcMain.handle('bgbrowser:run', async (_e, payload) => {
+    const goal = typeof payload === 'string' ? payload : payload && payload.goal;
+    const g = String(goal || '').trim();
+    if (!g) return { status: 'error', message: 'What should I do in the background?' };
+    if (bgRunning) return { status: 'busy', message: "I'm already running a background task. Say STOP to cancel it." };
+    const send = (evt) => broadcast('agent:event', { ...evt, background: true });
+    bgAbort = false;
+    bgRunning = true;
+    send({ type: 'started', goal: '🕶 (background) ' + g });
+    memory.logTurn('user', `(background) ${g}`, 'widget');
+    const t0 = Date.now();
+    try {
+      const res = await bgbrowser.run(g, {
+        onEvent: send,
+        shouldAbort: () => bgAbort,
+        startUrl: payload && payload.startUrl,
+      });
+      telemetry.record({ kind: 'background', goal: g, status: res.status, durationMs: Date.now() - t0 });
+      memory.logTurn('assistant', `(background ${res.status}) ${res.message || g}`, 'widget');
+      send({ type: 'finished', status: res.status, message: res.message, background: true });
+      return res;
+    } catch (err) {
+      send({ type: 'error', message: err.message, background: true });
+      send({ type: 'finished', status: 'error', message: err.message, background: true });
+      return { status: 'error', message: err.message };
+    } finally {
+      bgRunning = false;
+    }
+  });
+
+  // Close the hidden background browser (frees memory; logins persist in its
+  // own session partition and return next time).
+  ipcMain.handle('bgbrowser:close', async () => {
+    bgbrowser.close();
+    return { ok: true };
   });
 
   // Fast path: instant open-app / open-url / web-search with no screenshot loop.
