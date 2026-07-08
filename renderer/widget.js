@@ -333,6 +333,34 @@ async function runCommand(text) {
     setState('idle');
     return;
   }
+
+  // Ongoing / continuous research — "do nonstop research on X", "keep
+  // researching X", "research X for an hour". MUST come before the local
+  // file-search fast-paths below, which otherwise hijack the word "research"
+  // into a Spotlight search of the user's own files. This is web research.
+  if (
+    api.ongoing &&
+    (/\b(nonstop|non-stop|continuous(ly)?|ongoing|constantly|forever|indefinitely|around the clock)\b/i.test(text) &&
+      /\bresearch(ing)?\b/i.test(text)) ||
+    (/^\s*(do|start|begin|keep|run|perform)\b/i.test(text) && /\bresearch(ing)?\b/i.test(text) && /\b(on|about|into)\b/i.test(text)) ||
+    /\bkeep\s+(researching|studying|monitoring|tracking|digging into|looking into)\b/i.test(text)
+  ) {
+    // Parse an optional time budget → minutes ("an hour", "2 hours", "30 min").
+    let minutes;
+    const hr = /(\d+(?:\.\d+)?|an?|half an?|a couple(?: of)?|few)\s*(hours?|hrs?)/i.exec(text);
+    const mn = /(\d+)\s*(minutes?|mins?)\b/i.exec(text);
+    if (hr) {
+      const w = hr[1].toLowerCase();
+      const v = /^an?$/.test(w) ? 1 : /half/.test(w) ? 0.5 : /couple/.test(w) ? 2 : /few/.test(w) ? 3 : parseFloat(w);
+      minutes = Math.round(v * 60);
+    } else if (mn) {
+      minutes = parseInt(mn[1], 10);
+    }
+    log('info', '♾ Starting ongoing research' + (minutes ? ` for ~${minutes} min` : '') + ' — say stop anytime.');
+    say('Starting ongoing research' + (minutes ? ` for about ${minutes} minutes` : '') + '. I\'ll keep going until you say stop.', { interrupt: true });
+    await api.ongoing.start({ goal: text, minutes });
+    return;
+  }
   // Fast path: screen reads/summaries go STRAIGHT to the vision read, bypassing
   // the intent router (which sometimes replied "I'll do it" without an answer).
   // This is why "summarize this tab" said done but never reported back.
@@ -366,7 +394,8 @@ async function runCommand(text) {
   // "search my files for X", "find the doc about X".
   if (
     api.content &&
-    /\b(files?|docs?|documents?|pdfs?|notes?)\b.*\b(mention|about|contain|that (say|mention)|with|for)\b|\bsearch my (files?|computer|docs?|drive) for\b|\bfind (the )?(doc|document|file|pdf|note)s?\b.*\b(about|that|mention|with|containing)\b/i.test(text)
+    !/\bresearch(ing)?\b/i.test(text) && // "research" = web task, not a file search
+    (/\b(files?|docs?|documents?|pdfs?|notes?)\b.*\b(mention|about|contain|that (say|mention)|with|for)\b|\bsearch my (files?|computer|docs?|drive) for\b|\bfind (the )?(doc|document|file|pdf|note)s?\b.*\b(about|that|mention|with|containing)\b/i.test(text))
   ) {
     const q = text
       .replace(/^\s*(find|search|locate|which|what|show me)\b/i, '')
@@ -398,7 +427,10 @@ async function runCommand(text) {
     const isOpenFile =
       /^\s*open\b/i.test(text) &&
       /(\.\w{2,5}\b|\bfile\b|\bdocument\b|\bpdf\b|\bspreadsheet\b|\bphoto\b|\bimage\b|\bfolder\b|\bthe file\b|\bresume\b)/i.test(text);
-    if (api.sweep && (isFindVerb || isOpenFile) && !/\b(on (the )?web|internet|google|online)\b/i.test(text)) {
+    // Skip local file search for web/research/create intents — those belong to
+    // the router (run_goal / ongoing_task), not a Spotlight lookup of my files.
+    const isWebOrTask = /\b(on (the )?web|internet|google|online|research(ing)?|create|build|write|generate)\b/i.test(text);
+    if (api.sweep && (isFindVerb || isOpenFile) && !isWebOrTask) {
       const query = text
         .replace(/^\s*(find|locate|where('s| is)|search for|open)\b/i, '')
         .replace(/\b(my|the|a|an|file|files|document|documents|folder|on my (computer|mac|drive))\b/gi, ' ')
