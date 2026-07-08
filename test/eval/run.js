@@ -417,6 +417,60 @@ check('self-awareness: diagnose ranks weak capabilities + mines complaints', 'co
   assert.ok(/struggle/i.test(rep) && /goal/.test(rep) && /No screen source/.test(rep));
 });
 
+check('core: task engine drains one-at-a-time, preempts, schedules, honors infinite duration', 'correctness', async () => {
+  const { TaskEngine } = R('taskengine.js');
+  const done = [];
+  let release = null;
+  // runTask that we can hold open to simulate a long-running task.
+  const engine = new TaskEngine({
+    runTask: (task, ctl) =>
+      new Promise((resolve) => {
+        release = () => resolve({ status: ctl.shouldAbort() ? 'aborted' : 'done' });
+        // auto-resolve unless we're deliberately holding it
+        if (!task._hold) { done.push(task.title); resolve({ status: 'done' }); }
+      }),
+  });
+
+  // Single-focus: three queued tasks (non-preempting) drain one after another.
+  engine.add({ title: 'A', command: 'a', preempt: false });
+  engine.add({ title: 'B', command: 'b', preempt: false });
+  engine.add({ title: 'C', command: 'c', preempt: false });
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepStrictEqual(done.sort(), ['A', 'B', 'C'], 'all three ran, one at a time');
+  assert.strictEqual(engine.list().active, null, 'idle after draining');
+
+  // Never two at once + preempt: hold a task open, then a user task takes over.
+  const held = [];
+  const eng2 = new TaskEngine({
+    runTask: (task, ctl) => new Promise((resolve) => {
+      held.push(task.title);
+      const iv = setInterval(() => { if (ctl.shouldAbort()) { clearInterval(iv); resolve({ status: 'aborted' }); } }, 5);
+      task._resolve = () => { clearInterval(iv); resolve({ status: 'done' }); };
+    }),
+  });
+  eng2.add({ title: 'long', command: 'long' });
+  eng2.tick(Date.now());
+  await new Promise((r) => setTimeout(r, 15));
+  assert.strictEqual(eng2.list().active.title, 'long', 'long task is active');
+  eng2.add({ title: 'urgent', command: 'urgent' }); // user preempts
+  await new Promise((r) => setTimeout(r, 40));
+  const l2 = eng2.list();
+  assert.strictEqual(l2.active && l2.active.title, 'urgent', 'newest user task took over');
+  assert.ok(l2.queue.some((q) => q.title === 'long'), 'preempted task re-queued, not lost');
+
+  // Scheduled recurring task enqueues a run when due; infinite duration = never retires.
+  const eng3 = new TaskEngine({ runTask: async () => ({ status: 'done' }) });
+  const rec = eng3.add({ title: 'digest', command: 'digest', when: { kind: 'every', minutes: 1 } });
+  assert.ok(rec.durationMinutes == null && rec.expiresAt == null, 'no duration = never-ending');
+  const base = Date.now();
+  eng3.tick(base); // not due yet
+  assert.strictEqual(eng3.list().scheduled.length, 1, 'scheduled task listed');
+  eng3.tasks.find((x) => x.kind === 'recurring').nextAt = base; // force due
+  eng3.tick(base);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.strictEqual(eng3.list().scheduled.length, 1, 'never-ending task still scheduled after firing');
+});
+
 // ---------- CORRECTNESS ----------
 check('correctness: URL normalization', 'correctness', () => {
   const { normalizeUrl } = R('quickactions.js');
