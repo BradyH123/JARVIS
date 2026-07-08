@@ -753,6 +753,59 @@ function registerIpc() {
   ipcMain.handle('schedule:remove', async (_e, id) => scheduler.remove(id));
   ipcMain.handle('schedule:clear', async () => scheduler.clear());
 
+  // Read the advice on screen (Polsia AI, ChatGPT, …) and SET UP A SCHEDULE from
+  // it — each recommended task becomes a recurring job with a cadence AND a
+  // finite duration. ONLY runs on an explicit user request (never automatically).
+  ipcMain.handle('schedule:from-advice', async (_e, payload) => {
+    if (sessionRunning || improveRunning) return { status: 'busy', message: "I'm busy right now — try again in a moment." };
+    const source = (payload && payload.source) || 'the advisor on screen';
+    const send = (evt) => broadcast('agent:event', evt);
+    send({ type: 'started', goal: `Building a schedule from ${source}` });
+    try {
+      send({ type: 'thinking', text: `Reading ${source}…` });
+      const page = await webpage.readActiveTab().catch(() => ({ ok: false }));
+      let advice = '';
+      if (page.ok && page.text) advice = page.text;
+      else {
+        const shot = await captureFrame();
+        advice = await claude.describeScreen('Read ALL the advice/recommendations on screen, in full.', shot);
+      }
+      if (!advice || advice.trim().length < 10) {
+        const m = "I couldn't read any advice on screen. Open the advisor page first.";
+        send({ type: 'error', message: m });
+        send({ type: 'finished', status: 'error', message: m });
+        return { status: 'error', message: m };
+      }
+      send({ type: 'thinking', text: 'Turning the advice into a schedule…' });
+      const already = scheduler.list().map((j) => j.command);
+      const plan = await claude.planScheduledActions(advice, { context: memory.contextForPrompt(), alreadyScheduled: already });
+      if (!plan.tasks.length) {
+        const m = 'Nothing schedulable in the current advice.';
+        send({ type: 'done', message: m });
+        send({ type: 'finished', status: 'done', message: m });
+        return { status: 'done', scheduled: 0, message: m };
+      }
+      const added = [];
+      for (const t of plan.tasks) {
+        const job = scheduler.add(t.command, t.when, { durationMinutes: t.durationMinutes });
+        if (!job.error && !job.duplicate) added.push(scheduler.describe(job));
+        if (job.atCapacity) break;
+      }
+      if (added.length) memory.logTurn('assistant', `(scheduled from ${source}) ${added.join(' · ')}`, 'widget');
+      const report = added.length
+        ? `From ${source}: ${plan.summary || 'plan'}. Scheduled ${added.length} task(s): ${added.map((a) => '• ' + a).join(' ')}`
+        : `From ${source}: those tasks were already scheduled.`;
+      telemetry.record({ kind: 'schedule-from-advice', goal: source, status: 'done', steps: added.length, durationMs: 0 });
+      send({ type: 'done', message: report.slice(0, 600) });
+      send({ type: 'finished', status: 'done', message: report.slice(0, 600) });
+      return { status: 'done', scheduled: added.length, report };
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    }
+  });
+
   // Advisor loop: READ the advice on screen (e.g. Pulsia AI), extract concrete
   // action items, and actually GO DO them — then report progress. Designed to
   // be run on a repeating schedule ("ask Pulsia every 3 min and do what it

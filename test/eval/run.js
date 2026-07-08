@@ -229,6 +229,19 @@ check('autonomy: scheduler computes fire times, persists, and ticks correctly', 
   assert.ok(dailyJob.nextAt > Date.now(), 'recurring job rescheduled into the future');
   sched.clear();
   assert.strictEqual(sched.list().length, 0);
+
+  // Duration: every task can have a finite lifespan, then auto-expires so
+  // nothing runs forever.
+  const t0 = Date.now();
+  const timed = sched.add('post an update', { kind: 'every', minutes: 1 }, { durationMinutes: 2 });
+  assert.ok(timed.expiresAt && !timed.error, 'task carries an expiry');
+  assert.ok(/for 2m/.test(sched.describe(timed)), 'duration shown in description');
+  // Fires while within its lifespan…
+  assert.strictEqual(sched.tick(t0 + 61000, () => {}).length, 1, 'fires within lifespan');
+  // …and is removed once the lifespan elapses (no fire, gone from the list).
+  assert.strictEqual(sched.tick(t0 + 130000, () => {}).length, 0, 'no fire past expiry');
+  assert.ok(!sched.list().some((j) => j.command === 'post an update'), 'expired task removed');
+  sched.clear();
 });
 
 check('learning: playbook records, dedupes, caps, and feeds back by app', 'correctness', () => {

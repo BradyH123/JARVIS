@@ -655,6 +655,21 @@ async function runCommand(text) {
     setState('idle');
     return;
   }
+  // Schedule FROM advice — "read Pulsia and schedule the tasks it recommends",
+  // "set up a schedule from ChatGPT's advice". Explicit: turns on-screen advice
+  // into recurring scheduled tasks (each with a duration). Checked before the
+  // act-on-advice path so "schedule … advice" routes here, not to do-it-now.
+  {
+    const sfa = /\bschedul\w*\b.*\b(advice|recommendations?|tasks?|what (it|pulsia|polsia|chat\s?gpt|the ai))\b|\b(from|based on)\b.*\b(advice|what (pulsia|polsia|it|chat\s?gpt) (says|said|recommends))\b.*\bschedul/i;
+    if (api.schedule && api.schedule.fromAdvice && sfa.test(text) && /\bschedul/i.test(text)) {
+      const m = /\b(pulsia|polsia|chat\s?gpt|claude|google)\b/i.exec(text);
+      const source = m ? m[0].replace(/\s+/g, '') : 'the advisor on screen';
+      log('info', '📅 Reading the advice and building a schedule…');
+      say('Reading the advice and scheduling the tasks it recommends.', { interrupt: true });
+      await api.schedule.fromAdvice({ source });
+      return;
+    }
+  }
   // Act on advice — "do what Pulsia says", "listen to the advice and do it",
   // "act on what it's telling you". Reads the advice on screen, extracts the
   // concrete tasks, DOES them, and reports back. This is what a repeating
@@ -786,6 +801,10 @@ async function runCommand(text) {
       log('info', '♾ Ongoing task started' + mins + ' — I will keep working until you say stop.');
       say('Starting an ongoing task' + mins + '. I\'ll keep at it until you tell me to stop.', { interrupt: true });
       await api.ongoing.start({ goal: routed.goal, minutes: routed.minutes });
+    } else if (routed.action === 'schedule_from_advice') {
+      log('info', '📅 Reading the advice and building a schedule…');
+      say('Reading the advice and scheduling the tasks it recommends.', { interrupt: true });
+      await api.schedule.fromAdvice({ source: routed.source || 'the advisor on screen' });
     } else if (routed.action === 'act_on_advice') {
       log('info', '🎯 Reading the advice and acting on it…');
       say('Reading the advice and actually doing it now.', { interrupt: true });

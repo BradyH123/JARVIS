@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('assistant', {
     list: () => ipcRenderer.invoke('schedule:list'),
     remove: (id) => ipcRenderer.invoke('schedule:remove', id),
     clear: () => ipcRenderer.invoke('schedule:clear'),
+    fromAdvice: (payload) => ipcRenderer.invoke('schedule:from-advice', payload),
   },
   learningSummary: () => ipcRenderer.invoke('learning:summary'),
   advisorCycle: (payload) => ipcRenderer.invoke('advisor:cycle', payload),
