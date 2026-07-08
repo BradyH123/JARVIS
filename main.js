@@ -257,6 +257,36 @@ function broadcast(channel, payload) {
   }
 }
 
+// Live Activity window — a full timeline of what JARVIS is doing, driven by the
+// same agent:event broadcast the widget uses.
+let activityWindow = null;
+function createActivityWindow() {
+  if (activityWindow && !activityWindow.isDestroyed()) {
+    activityWindow.show();
+    activityWindow.focus();
+    return activityWindow;
+  }
+  const wa = screen.getPrimaryDisplay().workArea;
+  activityWindow = new BrowserWindow({
+    width: 640,
+    height: 620,
+    x: wa.x + 40,
+    y: wa.y + 60,
+    title: 'JARVIS Activity',
+    backgroundColor: '#0a0e14',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  activityWindow.loadFile(path.join(__dirname, 'renderer', 'activity.html'));
+  activityWindow.on('closed', () => {
+    activityWindow = null;
+  });
+  return activityWindow;
+}
+
 // The full dashboard (tabs). Created hidden; the widget is the primary surface.
 function createWindow(show) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1728,6 +1758,10 @@ function registerIpc() {
   });
 
   // --- Window controls (widget ↔ dashboard) ---
+  ipcMain.handle('window:open-activity', async () => {
+    createActivityWindow();
+    return { ok: true };
+  });
   ipcMain.handle('window:open-dashboard', async (_e, tab) => {
     const win = createWindow(true);
     win.show();

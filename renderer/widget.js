@@ -207,6 +207,10 @@ clearFeed();
 
 /* ---------- window controls ---------- */
 document.getElementById('wx-dash').addEventListener('click', () => api.openDashboard());
+{
+  const actBtn = document.getElementById('wx-activity');
+  if (actBtn && api.openActivity) actBtn.addEventListener('click', () => api.openActivity());
+}
 document.getElementById('wx-hide').addEventListener('click', () => api.hideWidget());
 document.getElementById('wx-quit').addEventListener('click', () => api.quitApp());
 
@@ -334,6 +338,13 @@ async function runCommand(text) {
     return;
   }
 
+  // Open the live Activity view — "show me what you're doing", "open activity".
+  if (api.openActivity && /^\s*(open|show( me)?|bring up|pop open)\s+(the\s+|your\s+|my\s+)?(activity|activity (view|window|feed|log)|what (you'?re|you are|your) doing|live (view|feed|log))\b|^\s*what are you doing\??\s*$/i.test(text)) {
+    log('info', '📊 Opening the live Activity view…');
+    await api.openActivity();
+    setState('idle');
+    return;
+  }
   // Ongoing / continuous research — "do nonstop research on X", "keep
   // researching X", "research X for an hour". MUST come before the local
   // file-search fast-paths below, which otherwise hijack the word "research"
