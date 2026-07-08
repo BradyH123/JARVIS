@@ -217,6 +217,106 @@ check('autonomy: scheduler computes fire times, persists, and ticks correctly', 
   assert.strictEqual(sched.list().length, 0);
 });
 
+check('learning: playbook records, dedupes, caps, and feeds back by app', 'correctness', () => {
+  const learning = R('learning.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-learn-'));
+  learning.init(dir);
+
+  // Recording a study adds patterns + habits + the workflow line, deduped.
+  const r1 = learning.record({
+    app: 'Ableton Live',
+    task: 'arranging a track',
+    patterns: ['The browser sidebar on the left holds instruments and samples.'],
+    habits: ['Uses cmd+d to duplicate a clip.'],
+    workflow: ['open browser', 'drag sample to track', 'duplicate clip'],
+  });
+  assert.strictEqual(r1.added, 3, 'patterns + habits + workflow line recorded');
+  // Same content again (case/punct varied) adds nothing.
+  const r2 = learning.record({ app: 'Ableton Live', patterns: ['the browser sidebar on the LEFT holds instruments and samples'] });
+  assert.strictEqual(r2.added, 0, 'rephrased duplicate collapsed');
+  // Too-short / junk lines are ignored; idle-ish empty studies are safe.
+  assert.strictEqual(learning.record({ app: 'Ableton Live', patterns: ['ok'] }).added, 0);
+  assert.strictEqual(learning.record(null).added, 0);
+
+  // The playbook injects the requested app first and respects the char budget.
+  learning.record({ app: 'Gmail', patterns: ['The compose button is in the top-left corner.'] });
+  const pb = learning.playbook('Ableton Live', 1600);
+  assert.ok(pb.indexOf('Ableton Live:') === 0, 'requested app leads the playbook');
+  assert.ok(/cmd\+d/.test(pb) && /compose button/.test(pb), 'other apps fill remaining budget');
+  assert.ok(learning.playbook('Ableton Live', 200).length <= 200, 'budget respected');
+  assert.strictEqual(learning.playbook(undefined, 0), '', 'zero budget → empty');
+
+  // Stats summarize; the per-app cap holds under heavy recording.
+  for (let i = 0; i < 150; i++) learning.record({ app: 'Gmail', patterns: [`Unique gmail pattern number ${i} about the interface.`] });
+  assert.ok(learning.patternsFor('Gmail').length <= learning.MAX_PATTERNS_PER_APP, 'per-app cap enforced');
+  const s = learning.stats();
+  assert.ok(s.total > 0 && s.apps.some((a) => a.app === 'Ableton Live'));
+
+  // SAFETY of the vault: a user-edited file (frontmatter, reworded heading)
+  // must never be wiped by the next record() — learned patterns survive.
+  const gmailFile = path.join(dir, 'Gmail.md');
+  fs.writeFileSync(gmailFile, '---\ntags: [jarvis]\n---\n' + fs.readFileSync(gmailFile, 'utf8'), 'utf8');
+  const before = learning.patternsFor('Gmail').length;
+  learning.record({ app: 'Gmail', patterns: ['A brand new pattern after the user edited the file.'] });
+  assert.ok(learning.patternsFor('Gmail').length >= before, 'user-edited file not wiped');
+
+  // Non-Latin patterns keep their identity (Unicode-aware dedupe).
+  const cjk1 = learning.record({ app: 'Safari', patterns: ['ブラウザの左側のサイドバーにブックマークが表示される。'] });
+  const cjk2 = learning.record({ app: 'Safari', patterns: ['タブバーは画面上部にある。'] });
+  assert.strictEqual(cjk1.added + cjk2.added, 2, 'CJK patterns recorded distinctly');
+
+  // Fuzzy app resolution: frontmost "Live" finds the "Ableton Live" playbook.
+  assert.ok(learning.playbook('Live', 1600).startsWith('Ableton Live:'), 'fuzzy app name resolves');
+
+  // An oversized line is skipped, not allowed to block the fill.
+  learning.record({ app: 'Notes', patterns: ['x'.repeat(290)] });
+  learning.record({ app: 'Notes', patterns: ['Short useful note pattern here.'] });
+  const pbN = learning.playbook('Notes', 220);
+  assert.ok(/Short useful note pattern/.test(pbN), 'small pattern survives an oversized sibling');
+});
+
+check('self-awareness: self-model refreshes from live facts and summarizes', 'correctness', () => {
+  const selfmodel = R('selfmodel.js');
+  const memory = R('memory.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-self-'));
+  memory.init(dir);
+  selfmodel.init(dir);
+
+  // Before any refresh: summary is empty (no hallucinated self).
+  assert.strictEqual(selfmodel.summary(), '');
+
+  const r = selfmodel.refresh({
+    version: 'abc1234 Improve click accuracy (2026-07-08)',
+    recentImprovements: ['Add background browser', 'Add scheduler'],
+    learning: { total: 12, apps: [{ app: 'Gmail', patterns: 7 }, { app: 'Ableton Live', patterns: 5 }] },
+    performance: 'Across 40 recent runs, overall success 92%.',
+    memoryStats: { days: 5, memories: 3, observations: 2, research: 1 },
+  });
+  assert.ok(r.ok, 'refresh writes Self.md');
+  const text = fs.readFileSync(path.join(dir, 'Self.md'), 'utf8');
+  assert.ok(/abc1234/.test(text) && /12 interface patterns/.test(text) && /92%/.test(text));
+  assert.ok(selfmodel.CAPABILITIES.every((c) => text.includes(c)), 'full capability inventory present');
+
+  // The prompt summary is compact, includes version + learnings, respects cap.
+  const sum = selfmodel.summary(900);
+  assert.ok(/abc1234/.test(sum) && /12 interface patterns/.test(sum));
+  assert.ok(sum.length <= 900);
+
+  // Partial refresh never writes garbage sections.
+  selfmodel.refresh({});
+  const t2 = fs.readFileSync(path.join(dir, 'Self.md'), 'utf8');
+  assert.ok(!/undefined|null/.test(t2), 'no garbage in partial refresh');
+
+  // Vault organization: stats count sections, Home index reflects live counts.
+  memory.logTurn('user', 'hello', 'widget');
+  memory.remember({ title: 'Test note', body: 'x' });
+  const s = memory.stats();
+  assert.ok(s.days >= 1 && s.memories >= 1, 'stats count conversations + memories');
+  memory.refreshHome();
+  const home = fs.readFileSync(path.join(dir, 'README.md'), 'utf8');
+  assert.ok(/\[\[Self\]\]/.test(home) && /Research\//.test(home) && /Learning\//.test(home), 'home index links all sections');
+});
+
 // ---------- CORRECTNESS ----------
 check('correctness: URL normalization', 'correctness', () => {
   const { normalizeUrl } = R('quickactions.js');

@@ -49,6 +49,29 @@ const windows = require('./lib/windows');
 const bgbrowser = require('./lib/bgbrowser');
 const ongoing = require('./lib/ongoing');
 const scheduler = require('./lib/scheduler');
+const learning = require('./lib/learning');
+const selfmodel = require('./lib/selfmodel');
+const frontmost = require('./lib/frontmost');
+
+// Refresh JARVIS's living self-model (Self.md): real version from git, what
+// he's learned, how he's performing, the shape of his memory. Called at
+// startup and after self-improvements so his self-awareness stays factual.
+function refreshSelfModel() {
+  execFile('git', ['log', '-6', '--format=%h %s (%as)'], { cwd: REPO_DIR, timeout: 5000 }, (err, out) => {
+    const lines = String(out || '').split('\n').map((s) => s.trim()).filter(Boolean);
+    try {
+      selfmodel.refresh({
+        version: err ? undefined : lines[0],
+        recentImprovements: err ? undefined : lines.slice(1),
+        learning: learning.stats(),
+        performance: telemetry.summaryText(),
+        memoryStats: memory.stats(),
+      });
+    } catch {
+      /* self-model is a bonus, never a blocker */
+    }
+  });
+}
 const claudeapp = require('./lib/claudeapp');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
@@ -125,19 +148,39 @@ let observeTimer = null;
 const OBSERVE_INTERVAL_MS = 120000; // summarize the user's activity every ~2 min
 const pendingConfirms = new Map(); // id -> resolve(boolean) for permission gates
 
-// Periodically summarize recent activity into the Observations vault.
+// Periodically STUDY recent activity: a structured pass (cheap Haiku call) that
+// feeds two places — a diary line in Observations, and durable interface
+// patterns in the Learning playbook that get injected back into the agent's
+// prompt. This is how always-watching makes JARVIS better at driving UIs.
+let studyInFlight = false;
 async function observeTick() {
-  if (!observing || !watch) return;
+  if (!observing || !watch || studyInFlight) return;
+  studyInFlight = true;
   try {
     const frames = watch.recent(4);
     if (!frames || !frames.length) return;
-    const note = await claude.observeActivity(frames);
-    if (note) {
-      memory.addObservation(note);
-      broadcast('watch:event', { active: true, paused: false, learning: true, note });
-    }
+    // Idle skip: consecutive buffer frames are ~3s apart, so a truly static
+    // screen produces byte-identical captures — skip the model call entirely.
+    // (Any real change, even a cursor move, busts this; the model's own
+    // idle=true flag is the second, semantic line of defense.)
+    if (frames.length >= 2 && frames[frames.length - 1] === frames[frames.length - 2]) return;
+
+    const study = await claude.studyActivity(frames);
+    if (!study || study.idle) return;
+    const diary = [study.app, study.task].filter(Boolean).join(' — ');
+    if (diary) memory.addObservation(diary);
+    const r = learning.record(study);
+    broadcast('watch:event', {
+      ...watch.status(), // keep the fields the dashboard renders (count, etc.)
+      learning: true,
+      note: diary || 'studying',
+      learned: r.added,
+      app: r.app,
+    });
   } catch {
     /* best-effort learning — never disrupt the app */
+  } finally {
+    studyInFlight = false;
   }
 }
 function startObserving() {
@@ -170,9 +213,22 @@ function resolveAllConfirms(value) {
 async function runSingleSession(skill, goal, send) {
   const objective = goal || (skill ? skill.name : null);
   if (!objective) return { status: 'error', message: 'No goal or skill provided.' };
+  // Everything JARVIS learned from watching the user work feeds his hands: the
+  // frontmost app's playbook (plus recent apps) rides along in the prompt.
+  // When a run starts, the frontmost app is usually JARVIS's own widget (the
+  // user just typed into it) — that must not count as the "current app".
+  let knowledge = '';
+  try {
+    const front = await frontmost.frontmostApp().catch(() => '');
+    const target = front && !frontmost.isSelf(front) ? front : undefined;
+    knowledge = learning.playbook(target);
+  } catch {
+    /* the playbook is a bonus, never a blocker */
+  }
   return agent.runSession({
     goal: objective,
     skill,
+    knowledge,
     capture: captureSized,
     execute: executor.perform,
     onEvent: send,
@@ -651,6 +707,13 @@ function registerIpc() {
   ipcMain.handle('schedule:list', async () => scheduler.list());
   ipcMain.handle('schedule:remove', async (_e, id) => scheduler.remove(id));
   ipcMain.handle('schedule:clear', async () => scheduler.clear());
+
+  // What has watching taught him? The interface-playbook summary.
+  ipcMain.handle('learning:summary', async () => {
+    const s = learning.stats();
+    const sample = s.apps.slice(0, 3).flatMap((a) => learning.patternsFor(a.app).slice(-2).map((p) => `${a.app}: ${p}`));
+    return { ...s, sample };
+  });
 
   // Background browser: complete a web task in a HIDDEN browser JARVIS drives via
   // the DOM — off-screen, so the user keeps full use of their mouse/screen. Runs
@@ -1401,6 +1464,7 @@ function registerIpc() {
         const upToDate = /up to date/i.test(text);
         send({ type: 'thinking', text: upToDate ? 'Already up to date.' : 'Pulled updates: ' + text.trim().slice(0, 200) });
         send({ type: 'finished', status: 'done', summary: upToDate ? 'Already up to date.' : 'Updated — reload to apply.', changed: [], engine: 'git' });
+        if (!upToDate) refreshSelfModel(); // new code → new self
         resolve({ status: 'done', upToDate });
       });
     });
@@ -1631,6 +1695,10 @@ app.whenReady().then(() => {
     vaultDir = path.join(app.getPath('userData'), 'JARVIS Vault');
   }
   memory.init(vaultDir);
+  learning.init(path.join(vaultDir, 'Learning')); // interface playbook lives in the vault
+  selfmodel.init(vaultDir);
+  memory.refreshHome(); // the vault's index self-organizes at every startup
+  refreshSelfModel();
   telemetry.init(app.getPath('userData'));
   sweep.init(path.join(app.getPath('userData'), 'index'));
   // Scheduled actions survive restarts; when one comes due, wake the widget and
