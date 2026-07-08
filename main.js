@@ -47,6 +47,7 @@ const crawler = require('./lib/crawler');
 const axtree = require('./lib/axtree');
 const windows = require('./lib/windows');
 const bgbrowser = require('./lib/bgbrowser');
+const ongoing = require('./lib/ongoing');
 const claudeapp = require('./lib/claudeapp');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
@@ -558,8 +559,79 @@ function registerIpc() {
   ipcMain.handle('assistant:stop', async () => {
     sessionAbort = true;
     bgAbort = true; // also halt any background web task
+    ongoing.stop(); // and wind down any ongoing (always-online) tasks
     resolveAllConfirms(false); // unblock any pending permission prompt as denied
     return { stopped: true };
+  });
+
+  // Ongoing ("always online") tasks: open-ended work that runs cycle after
+  // cycle in the hidden background browser, accumulating findings into the
+  // memory vault, and NEVER stops until the user says so (or an optional time
+  // budget runs out). On finish it enhances its own work into a polished report.
+  ipcMain.handle('ongoing:start', async (_e, payload) => {
+    const goal = typeof payload === 'string' ? payload : payload && payload.goal;
+    const minutes = payload && Number(payload.minutes);
+    const g = String(goal || '').trim();
+    if (!g) return { error: 'What should I keep working on?' };
+    const send = (evt) => broadcast('agent:event', evt);
+    bgAbort = false; // a fresh task clears any earlier STOP
+
+    // Each cycle drives the ONE hidden browser — wait politely if a manual
+    // background task holds it, and never run two cycles into it at once.
+    const research = async (task, angle) => {
+      while (bgRunning && !task.stopRequested) await new Promise((r) => setTimeout(r, 400));
+      if (task.stopRequested) return { message: '' };
+      bgRunning = true;
+      try {
+        const prior = task.lastFinding ? `\nAlready noted (do NOT repeat, go deeper): ${task.lastFinding.slice(0, 500)}` : '';
+        // Stream only the cycle's thinking/actions — its 'done'/'finished'
+        // lifecycle events stay internal, or every cycle would announce "Done."
+        // and flip the widget out of its ONGOING state.
+        const cycleSend = (evt) => {
+          if (evt.type === 'thinking' || evt.type === 'action') send(evt);
+        };
+        return await bgbrowser.run(
+          `Research task: ${task.goal}\nThis cycle, focus on: ${angle}.${prior}\n` +
+            'Use search engines and authoritative sites. When you have gathered enough for this ' +
+            'cycle, call finish with a DETAILED summary of concrete findings — facts, numbers, ' +
+            'names, and the source sites/URLs they came from.',
+          { onEvent: cycleSend, shouldAbort: () => task.stopRequested || bgAbort, maxSteps: 20 }
+        );
+      } finally {
+        bgRunning = false;
+      }
+    };
+    // The "optimize/enhance after finishing" pass: raw notes → polished report.
+    const synthesize = (task, notes) =>
+      claude.answerFromText(
+        'Rewrite these accumulated research notes into a polished, well-organized report: ' +
+          'deduplicate, resolve contradictions (prefer cross-checked facts), organize with clear ' +
+          'headings, keep every concrete fact/number/source, and end with a short takeaways list.',
+        `Report: ${task.goal}`,
+        String(notes).slice(0, 60000)
+      );
+
+    const onEvent = (evt) => {
+      send(evt);
+      if (evt.type === 'ongoing-finished') {
+        memory.logTurn('assistant', `(ongoing ${evt.status} after ${evt.cycles} cycles) ${evt.goal} → ${evt.reportPath || evt.notePath}`, 'widget');
+        telemetry.record({ kind: 'ongoing', goal: evt.goal, status: evt.status, durationMs: 0 });
+      }
+    };
+    const notesDir = path.join(memory.vaultPath(), 'Research');
+    const t = ongoing.start(g, { notesDir, minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : undefined }, { research, synthesize, onEvent });
+    if (t.error) return t;
+    memory.logTurn('user', `(ongoing) ${g}`, 'widget');
+    memory.logTurn('assistant', `(ongoing started) ${g} → ${t.notePath}`, 'widget');
+    telemetry.record({ kind: 'ongoing', goal: g, status: 'started', durationMs: 0 });
+    return t;
+  });
+
+  ipcMain.handle('ongoing:stop', async (_e, id) => ongoing.stop(id || undefined));
+  ipcMain.handle('ongoing:list', async () => {
+    const l = ongoing.list();
+    ongoing.prune();
+    return l;
   });
 
   // Background browser: complete a web task in a HIDDEN browser JARVIS drives via

@@ -320,6 +320,13 @@ if (api.onWatchEvent) {
 async function runCommand(text) {
   if (!text.trim()) return;
   log('action', '❯ ' + text);
+  // STOP comes before everything — typed or spoken, it always obeys instantly.
+  if (/^\s*(stop|halt|cancel|abort|stand down|that'?s enough|enough)\s*[.!]?\s*$/i.test(text)) {
+    log('warn', 'Stop requested…');
+    await api.stop();
+    setState('idle');
+    return;
+  }
   // Fast path: screen reads/summaries go STRAIGHT to the vision read, bypassing
   // the intent router (which sometimes replied "I'll do it" without an answer).
   // This is why "summarize this tab" said done but never reported back.
@@ -631,6 +638,11 @@ async function runCommand(text) {
       say('Opening your Claude Code session and typing the request in.', { interrupt: true });
       await api.improve.viaScreen(routed.request);
       log('info', 'Sent. When Claude Code finishes, say "upload yourself" then "reload yourself".');
+    } else if (routed.action === 'ongoing_task') {
+      const mins = routed.minutes ? ` for ${routed.minutes} minutes` : '';
+      log('info', '♾ Ongoing task started' + mins + ' — I will keep working until you say stop.');
+      say('Starting an ongoing task' + mins + '. I\'ll keep at it until you tell me to stop.', { interrupt: true });
+      await api.ongoing.start({ goal: routed.goal, minutes: routed.minutes });
     } else if (routed.action === 'background_task') {
       log('info', '🕶 Working in the background — your screen stays free.');
       say('On it in the background. Keep working — I won\'t touch your screen.', { interrupt: true });
@@ -915,6 +927,32 @@ api.onAgentEvent((evt) => {
     case 'done':
       if (evt.message) log('info', '✓ ' + evt.message);
       say(evt.message || 'Done.');
+      setState('done');
+      setTimeout(() => current === 'done' && setState('idle'), 4000);
+      break;
+    // Ongoing ("always online") task lifecycle — shows as ONGOING, never idles
+    // out on its own; only 'ongoing-finished' releases the state.
+    case 'ongoing-started':
+      setState('running', '♾ ONGOING — say "stop" anytime');
+      log('info', '♾ Ongoing: ' + (evt.goal || '') + ' → notes in your memory vault');
+      break;
+    case 'ongoing-cycle':
+      setState('running', `♾ ONGOING — cycle ${evt.cycle} · say "stop" anytime`);
+      log('info', `♾ Cycle ${evt.cycle}: ${evt.angle || ''}`);
+      break;
+    case 'ongoing-finding':
+      if (evt.summary) log('think', '📝 ' + evt.summary);
+      break;
+    case 'ongoing-error':
+      log('warn', 'Cycle hit a snag (continuing): ' + (evt.message || ''));
+      break;
+    case 'ongoing-finishing':
+      setState('running', '♾ Polishing the work into a report…');
+      log('info', '♾ Enhancing the accumulated notes into a polished report…');
+      break;
+    case 'ongoing-finished':
+      log('info', `♾ ${evt.status === 'stopped' ? 'Stopped' : 'Finished'} after ${evt.cycles} cycle(s). ` + (evt.reportPath ? 'Polished report saved to your memory vault.' : 'Notes saved to your memory vault.'));
+      say(evt.status === 'stopped' ? 'Stopped. I polished what I had into a report in your memory vault.' : 'All done — the report is in your memory vault.', { interrupt: true });
       setState('done');
       setTimeout(() => current === 'done' && setState('idle'), 4000);
       break;

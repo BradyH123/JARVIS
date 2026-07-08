@@ -110,6 +110,53 @@ check('grounding: background browser builds a safe locator + page block', 'corre
   assert.ok(/URL: https:\/\/x\.io/.test(block) && /\[0\] a\(link\) "Home"/.test(block));
 });
 
+check('autonomy: ongoing task loops until told to stop, then enhances its work', 'correctness', async () => {
+  const ongoing = R('ongoing.js');
+  const notesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-og-'));
+  let cycles = 0;
+  let synthesized = false;
+  const t = ongoing.start(
+    'research cats',
+    { notesDir, pauseMs: 5 },
+    {
+      research: async (_task, angle) => {
+        cycles++;
+        return { message: `finding ${cycles} via ${angle}` };
+      },
+      synthesize: async (_task, notes) => {
+        synthesized = true;
+        assert.ok(/finding 1/.test(notes) && /finding 2/.test(notes), 'notes accumulate across cycles');
+        return 'polished report';
+      },
+    }
+  );
+  assert.ok(!t.error && t.status === 'ongoing', 'starts as ongoing');
+  // Let it run several cycles — it must STILL be going (never stops on its own).
+  await new Promise((r) => setTimeout(r, 120));
+  assert.ok(cycles >= 2, 'kept working across cycles, got ' + cycles);
+  assert.strictEqual(ongoing.get(t.id).status, 'ongoing', 'still ongoing until told to stop');
+  // The user says stop → it winds down and runs the enhance pass.
+  ongoing.stop(t.id);
+  const finalT = await ongoing.promiseOf(t.id);
+  assert.strictEqual(finalT.status, 'stopped');
+  assert.ok(synthesized, 'ran the enhance/optimize pass after finishing');
+  assert.ok(fs.existsSync(finalT.notePath), 'findings note exists');
+  assert.ok(finalT.reportPath && /polished report/.test(fs.readFileSync(finalT.reportPath, 'utf8')), 'polished report written');
+  // Angles rotate so cycles deepen instead of repeating.
+  assert.notStrictEqual(ongoing.pickAngle(1), ongoing.pickAngle(2));
+  assert.strictEqual(ongoing.pickAngle(1), ongoing.pickAngle(1 + ongoing.ANGLES.length));
+  // A time-budgeted task ends on its own when the budget is spent.
+  const t2 = ongoing.start(
+    'quick check',
+    { notesDir, pauseMs: 5, minutes: 0.0005 }, // ~30ms budget
+    { research: async () => ({ message: 'x' }) }
+  );
+  const finalT2 = await ongoing.promiseOf(t2.id);
+  assert.strictEqual(finalT2.status, 'done', 'time budget ends the task by itself');
+  ongoing.prune();
+  assert.strictEqual(ongoing.list().length, 0, 'prune clears finished tasks');
+});
+
 // ---------- CORRECTNESS ----------
 check('correctness: URL normalization', 'correctness', () => {
   const { normalizeUrl } = R('quickactions.js');

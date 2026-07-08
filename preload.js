@@ -42,6 +42,11 @@ contextBridge.exposeInMainWorld('assistant', {
   listWindows: () => ipcRenderer.invoke('windows:list'),
   backgroundTask: (goal) => ipcRenderer.invoke('bgbrowser:run', goal),
   closeBackgroundBrowser: () => ipcRenderer.invoke('bgbrowser:close'),
+  ongoing: {
+    start: (payload) => ipcRenderer.invoke('ongoing:start', payload),
+    stop: (id) => ipcRenderer.invoke('ongoing:stop', id),
+    list: () => ipcRenderer.invoke('ongoing:list'),
+  },
   harvest: (allTabs) => ipcRenderer.invoke('webpage:harvest', allTabs),
   crawl: (opts) => ipcRenderer.invoke('webpage:crawl', opts),
   sweep: {
