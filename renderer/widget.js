@@ -724,9 +724,20 @@ async function runCommand(text) {
       say(msg, { interrupt: true });
       setState('idle', routed.enabled ? 'Full Control ON' : 'Approval mode');
     } else {
-      log('think', routed.message || '(no reply)');
-      say(routed.message || '');
-      setState('idle');
+      // Safety net: if the router "replied" with a PROMISE to act ("I'll…",
+      // "one sec", "let me open…") instead of doing it, actually do it — run
+      // the original command through the multi-step orchestrator. This is the
+      // fix for "it just says one sec and never acts".
+      const promise = /\b(i'?ll|i will|let me|one sec(ond)?|hang on|hold on|on it|give me a (sec|moment)|i'?m going to|i can (search|open|find|check|look)|searching|looking (it )?up|checking|opening|let'?s (open|search|go))\b/i;
+      if (api.doAnything && routed.message && promise.test(routed.message)) {
+        log('info', '⚡ Acting on that (not just talking about it)…');
+        say("On it.", { interrupt: true });
+        await api.doAnything(text);
+      } else {
+        log('think', routed.message || '(no reply)');
+        say(routed.message || '');
+        setState('idle');
+      }
     }
   } catch (e) {
     if (/API key/i.test(e.message || '')) {

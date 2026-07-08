@@ -114,11 +114,12 @@ const SELF_IMPROVE_TASK = (goal) =>
 // (via computer-use), instead of spawning a hidden claude process. This is what
 // the user wants: use the real, authenticated on-screen session.
 const ONSCREEN_TASK = (request) =>
-  'Hand a coding task to the Claude Code session that is ALREADY OPEN on this computer ' +
-  '(a terminal window or the Claude app where `claude` / Claude Code is running). Do EXACTLY ' +
-  'these steps, then STOP:\n' +
-  '1. Bring that Claude Code window to the front (use the app switcher / Dock / click it). If ' +
-  'you cannot find an open Claude Code session, say so and stop.\n' +
+  'Hand a coding task to the Claude Code session that is ALREADY OPEN on this computer. It may ' +
+  'be a terminal window, the Claude desktop app, OR a BROWSER TAB at claude.ai/code (check ' +
+  'your browser tabs — this is the most likely place). Do EXACTLY these steps, then STOP:\n' +
+  '1. Bring that Claude Code session to the front — if it is a browser tab, switch the browser ' +
+  'to that tab and focus the window. If you cannot find any open Claude Code session, say so ' +
+  'and stop.\n' +
   '2. Click its message input box (usually at the bottom of that window).\n' +
   '3. Type this message VERBATIM and then press Enter/Return to send it:\n' +
   `   "${request}. Make this change in the JARVIS repository you are working in, keep the app ` +
