@@ -222,4 +222,17 @@ body.collapsed .wx-foot { display: none !important; }
 body.collapsed .wx-core { height: 116px; }
 body.collapsed #wx-orb { width: 116px; height: 116px; }
 body.collapsed .wx-orb-label { font-size: 8px; letter-spacing: 2px; }
+
+/* expanded "monitor" mode — same window, the orb plus a big activity feed */
+body.expanded .widget {
+  width: calc(100vw - 16px);
+  height: calc(100vh - 16px);
+}
+/* Give the feed the room: shrink the orb, let the feed take the rest. */
+body.expanded .wx-core { height: 120px; }
+body.expanded #wx-orb { width: 150px; height: 150px; }
+body.expanded .wx-feed {
+  font-size: 12.5px;
+  padding: 12px 14px;
+}
 @media (prefers-reduced-motion: reduce) { .wx-rec { animation: none; } }

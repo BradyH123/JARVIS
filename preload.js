@@ -128,8 +128,8 @@ contextBridge.exposeInMainWorld('assistant', {
   // Widget ↔ dashboard window controls.
   openDashboard: (tab) => ipcRenderer.invoke('window:open-dashboard', tab),
   openActivity: () => ipcRenderer.invoke('window:open-activity'),
-  toggleActivityOnTop: () => ipcRenderer.invoke('activity:toggle-ontop'),
-  onActivityOnTop: (cb) => ipcRenderer.on('activity:ontop', (_e, v) => cb(v)),
+  expandWidget: (expanded) => ipcRenderer.invoke('widget:expand', expanded),
+  onWidgetExpanded: (cb) => ipcRenderer.on('widget:expanded', (_e, v) => cb(v)),
   hideWidget: () => ipcRenderer.invoke('widget:hide'),
   quitApp: () => ipcRenderer.invoke('widget:quit'),
   collapseWidget: (collapsed) => ipcRenderer.invoke('widget:collapse', collapsed),

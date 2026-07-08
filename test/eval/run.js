@@ -171,6 +171,20 @@ check('autonomy: ongoing task loops until told to stop, then enhances its work',
   assert.strictEqual(finalT2.status, 'done', 'time budget ends the task by itself');
   ongoing.prune();
   assert.strictEqual(ongoing.list().length, 0, 'prune clears finished tasks');
+
+  // Anti-flood: same goal never spawns a duplicate, and concurrent tasks are
+  // capped (a repeating schedule can't pile up endless never-ending tasks).
+  const research = async () => new Promise((r) => setTimeout(() => r({ message: 'x' }), 50));
+  const a1 = ongoing.start('monitor claude code', { notesDir, pauseMs: 1000 }, { research });
+  const a2 = ongoing.start('monitor claude code', { notesDir, pauseMs: 1000 }, { research });
+  assert.ok(a2.alreadyRunning && a2.id === a1.id, 'same goal returns the existing task, no duplicate');
+  ongoing.start('monitor task two', { notesDir, pauseMs: 1000 }, { research });
+  ongoing.start('monitor task three', { notesDir, pauseMs: 1000 }, { research });
+  const capped = ongoing.start('monitor task four', { notesDir, pauseMs: 1000 }, { research });
+  assert.ok(capped.error && capped.atCapacity, 'concurrency cap refuses a 4th ongoing task');
+  assert.strictEqual(ongoing.list().filter((t) => t.status === 'ongoing').length, 3, 'exactly the cap runs');
+  const stopped = ongoing.stop(); // stop ALL
+  assert.ok(stopped.stopped >= 3, 'stop with no id clears every ongoing task');
 });
 
 check('autonomy: scheduler computes fire times, persists, and ticks correctly', 'correctness', () => {

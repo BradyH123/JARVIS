@@ -258,61 +258,6 @@ function broadcast(channel, payload) {
   }
 }
 
-// Live Activity window — a full timeline of what JARVIS is doing, driven by the
-// same agent:event broadcast the widget uses.
-let activityWindow = null;
-function createActivityWindow() {
-  if (activityWindow && !activityWindow.isDestroyed()) {
-    activityWindow.show();
-    activityWindow.focus();
-    return activityWindow;
-  }
-  const wa = screen.getPrimaryDisplay().workArea;
-  const saved = config.getActivityState ? config.getActivityState() : {};
-  // Large by default (a real monitoring surface), but never bigger than the
-  // screen; restores the user's last size/position.
-  const width = Math.min(saved.width || 980, wa.width - 40);
-  const height = Math.min(saved.height || 820, wa.height - 40);
-  activityWindow = new BrowserWindow({
-    width,
-    height,
-    minWidth: 460,
-    minHeight: 380,
-    x: Number.isFinite(saved.x) ? saved.x : wa.x + 40,
-    y: Number.isFinite(saved.y) ? saved.y : wa.y + 40,
-    title: 'JARVIS Activity',
-    backgroundColor: '#0a0e14',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-  if (saved.onTop) activityWindow.setAlwaysOnTop(true, 'floating');
-  activityWindow.loadFile(path.join(__dirname, 'renderer', 'activity.html'));
-  // Persist size/position so the monitor window stays where the user put it.
-  const persist = () => {
-    if (!activityWindow || activityWindow.isDestroyed()) return;
-    const [x, y] = activityWindow.getPosition();
-    const [w, h] = activityWindow.getSize();
-    if (config.setActivityState) config.setActivityState({ x, y, width: w, height: h });
-  };
-  let persistTimer = null;
-  const debouncedPersist = () => {
-    clearTimeout(persistTimer);
-    persistTimer = setTimeout(persist, 400);
-  };
-  activityWindow.on('resize', debouncedPersist);
-  activityWindow.on('move', debouncedPersist);
-  activityWindow.webContents.on('did-finish-load', () => {
-    activityWindow.webContents.send('activity:ontop', activityWindow.isAlwaysOnTop());
-  });
-  activityWindow.on('closed', () => {
-    activityWindow = null;
-  });
-  return activityWindow;
-}
-
 // The full dashboard (tabs). Created hidden; the widget is the primary surface.
 function createWindow(show) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -344,7 +289,11 @@ function createWindow(show) {
 
 const WIDGET_FULL = { width: 360, height: 520 };
 const WIDGET_MINI = { width: 132, height: 132 };
+// Expanded "monitor" mode: the SAME window, just much bigger so the orb and the
+// full activity feed live together — no second window.
+const WIDGET_EXPANDED = { width: 560, height: 820 };
 let widgetCollapsed = false;
+let widgetExpanded = false;
 let saveWidgetTimer = null;
 
 // The always-on-top JARVIS widget: frameless, transparent, floats over work.
@@ -352,7 +301,8 @@ function createWidget() {
   const wa = screen.getPrimaryDisplay().workArea;
   const saved = config.getWidgetState();
   widgetCollapsed = Boolean(saved.collapsed);
-  const size = widgetCollapsed ? WIDGET_MINI : WIDGET_FULL;
+  widgetExpanded = Boolean(saved.expanded);
+  const size = widgetCollapsed ? WIDGET_MINI : widgetExpanded ? WIDGET_EXPANDED : WIDGET_FULL;
 
   widgetWindow = new BrowserWindow({
     width: size.width,
@@ -387,10 +337,29 @@ function createWidget() {
     }, 400);
   });
 
-  // Tell the renderer its initial collapsed state once it's ready.
+  // Tell the renderer its initial collapsed/expanded state once it's ready.
   widgetWindow.webContents.on('did-finish-load', () => {
     widgetWindow.webContents.send('widget:collapsed', widgetCollapsed);
+    widgetWindow.webContents.send('widget:expanded', widgetExpanded);
   });
+}
+
+// Expand/shrink the widget between normal and big "monitor" size — same window,
+// bottom-right corner anchored so it grows in place. Never while collapsed.
+function setWidgetExpanded(expanded) {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  if (widgetCollapsed) return;
+  widgetExpanded = Boolean(expanded);
+  const [x, y] = widgetWindow.getPosition();
+  const [w, h] = widgetWindow.getSize();
+  const next = widgetExpanded ? WIDGET_EXPANDED : WIDGET_FULL;
+  const wa = screen.getPrimaryDisplay().workArea;
+  // Keep it on screen when growing near the bottom/right edge.
+  const nx = Math.max(wa.x, Math.min(x + (w - next.width), wa.x + wa.width - next.width));
+  const ny = Math.max(wa.y, Math.min(y + (h - next.height), wa.y + wa.height - next.height));
+  widgetWindow.setBounds({ x: nx, y: ny, width: next.width, height: next.height });
+  config.setWidgetState({ expanded: widgetExpanded });
+  widgetWindow.webContents.send('widget:expanded', widgetExpanded);
 }
 
 // Collapse/expand the widget to the floating-orb mini-mode, keeping the
@@ -748,7 +717,19 @@ function registerIpc() {
       { notesDir, pauseMs: 45000, minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : undefined },
       { research, synthesize, onEvent }
     );
-    if (t.error) return t;
+    // At capacity — tell the user to stop some first (don't pile up tasks).
+    if (t.error) {
+      send({ type: 'error', message: t.error });
+      send({ type: 'finished', status: 'error', message: t.error });
+      return t;
+    }
+    // Same goal already running — don't start a duplicate.
+    if (t.alreadyRunning) {
+      const m = `Already monitoring that ("${g}"). I won't start a duplicate — say "stop" to end it.`;
+      send({ type: 'done', message: m });
+      send({ type: 'finished', status: 'done', message: m });
+      return t;
+    }
     memory.logTurn('user', `(ongoing) ${g}`, 'widget');
     memory.logTurn('assistant', `(ongoing started) ${g} → ${t.notePath}`, 'widget');
     telemetry.record({ kind: 'ongoing', goal: g, status: 'started', durationMs: 0 });
@@ -1804,17 +1785,16 @@ function registerIpc() {
   });
 
   // --- Window controls (widget ↔ dashboard) ---
+  // "Open activity" now EXPANDS the single widget into monitor mode — one
+  // window with the orb and the full activity feed, never a second window.
   ipcMain.handle('window:open-activity', async () => {
-    createActivityWindow();
-    return { ok: true };
+    if (widgetCollapsed) setWidgetCollapsed(false);
+    setWidgetExpanded(true);
+    return { ok: true, expanded: true };
   });
-  // Pin/unpin the Activity monitor above other windows so it's always visible.
-  ipcMain.handle('activity:toggle-ontop', async () => {
-    if (!activityWindow || activityWindow.isDestroyed()) return { onTop: false };
-    const next = !activityWindow.isAlwaysOnTop();
-    activityWindow.setAlwaysOnTop(next, 'floating');
-    if (config.setActivityState) config.setActivityState({ onTop: next });
-    return { onTop: next };
+  ipcMain.handle('widget:expand', async (_e, expanded) => {
+    setWidgetExpanded(expanded);
+    return { expanded: widgetExpanded };
   });
   ipcMain.handle('window:open-dashboard', async (_e, tab) => {
     const win = createWindow(true);

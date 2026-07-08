@@ -207,9 +207,20 @@ clearFeed();
 
 /* ---------- window controls ---------- */
 document.getElementById('wx-dash').addEventListener('click', () => api.openDashboard());
+// 📊 toggles the single widget between normal and big "monitor" size — one
+// window with the orb and the full activity feed. No second window.
+let widgetExpanded = false;
+if (api.onWidgetExpanded) {
+  api.onWidgetExpanded((v) => {
+    widgetExpanded = !!v;
+    document.body.classList.toggle('expanded', widgetExpanded);
+    const b = document.getElementById('wx-activity');
+    if (b) b.title = widgetExpanded ? 'Shrink back to the compact orb' : 'Expand into the full activity monitor';
+  });
+}
 {
   const actBtn = document.getElementById('wx-activity');
-  if (actBtn && api.openActivity) actBtn.addEventListener('click', () => api.openActivity());
+  if (actBtn && api.expandWidget) actBtn.addEventListener('click', () => api.expandWidget(!widgetExpanded));
 }
 document.getElementById('wx-hide').addEventListener('click', () => api.hideWidget());
 document.getElementById('wx-quit').addEventListener('click', () => api.quitApp());
