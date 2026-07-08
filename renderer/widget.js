@@ -207,6 +207,10 @@ clearFeed();
 
 /* ---------- window controls ---------- */
 document.getElementById('wx-dash').addEventListener('click', () => api.openDashboard());
+{
+  const actBtn = document.getElementById('wx-activity');
+  if (actBtn && api.openActivity) actBtn.addEventListener('click', () => api.openActivity());
+}
 document.getElementById('wx-hide').addEventListener('click', () => api.hideWidget());
 document.getElementById('wx-quit').addEventListener('click', () => api.quitApp());
 
@@ -334,6 +338,13 @@ async function runCommand(text) {
     return;
   }
 
+  // Open the live Activity view — "show me what you're doing", "open activity".
+  if (api.openActivity && /^\s*(open|show( me)?|bring up|pop open)\s+(the\s+|your\s+|my\s+)?(activity|activity (view|window|feed|log)|what (you'?re|you are|your) doing|live (view|feed|log))\b|^\s*what are you doing\??\s*$/i.test(text)) {
+    log('info', '📊 Opening the live Activity view…');
+    await api.openActivity();
+    setState('idle');
+    return;
+  }
   // Ongoing / continuous research — "do nonstop research on X", "keep
   // researching X", "research X for an hour". MUST come before the local
   // file-search fast-paths below, which otherwise hijack the word "research"
@@ -623,6 +634,21 @@ async function runCommand(text) {
     setState('idle');
     return;
   }
+  // Act on advice — "do what Pulsia says", "listen to the advice and do it",
+  // "act on what it's telling you". Reads the advice on screen, extracts the
+  // concrete tasks, DOES them, and reports back. This is what a repeating
+  // schedule fires, so it's a fast-path (no router round-trip).
+  {
+    const adv = /\b(do|act on|follow|carry out|execute|listen to)\b.*\b(advice|recommendation|suggestion|what (it|pulsia|polsia|the ai|it'?s)|instructions?)\b|\bdo what (pulsia|polsia|it|the (ai|advisor)|he|she)\b|\bwhat (pulsia|polsia|it) (says|said|recommends|tells? (me|you))\b/i;
+    if (api.advisorCycle && adv.test(text)) {
+      const m = /\b(pulsia|polsia)\b/i.exec(text);
+      const source = m ? 'Pulsia' : 'the advisor on screen';
+      log('info', '🎯 Reading the advice and acting on it…');
+      say('Reading the advice and actually doing it now.', { interrupt: true });
+      await api.advisorCycle({ source });
+      return;
+    }
+  }
   // Background web task — "in the background, …", "quietly …", "while I keep
   // working, …", "without taking over my screen, …". Runs in a hidden browser.
   const bgM = /^\s*(?:in the background|behind the scenes|quietly|without (?:taking over|using) (?:my )?(?:screen|mouse)|while i(?:'m| am)? (?:keep )?(?:working|using|busy)[^,]*)[,:]?\s*(.+)/i.exec(text);
@@ -739,6 +765,10 @@ async function runCommand(text) {
       log('info', '♾ Ongoing task started' + mins + ' — I will keep working until you say stop.');
       say('Starting an ongoing task' + mins + '. I\'ll keep at it until you tell me to stop.', { interrupt: true });
       await api.ongoing.start({ goal: routed.goal, minutes: routed.minutes });
+    } else if (routed.action === 'act_on_advice') {
+      log('info', '🎯 Reading the advice and acting on it…');
+      say('Reading the advice and actually doing it now.', { interrupt: true });
+      await api.advisorCycle({ source: routed.source || 'the advisor on screen' });
     } else if (routed.action === 'background_task') {
       log('info', '🕶 Working in the background — your screen stays free.');
       say('On it in the background. Keep working — I won\'t touch your screen.', { interrupt: true });

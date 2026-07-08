@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('assistant', {
     clear: () => ipcRenderer.invoke('schedule:clear'),
   },
   learningSummary: () => ipcRenderer.invoke('learning:summary'),
+  advisorCycle: (payload) => ipcRenderer.invoke('advisor:cycle', payload),
   onScheduleFire: (cb) => ipcRenderer.on('schedule:fire', (_e, job) => cb(job)),
   harvest: (allTabs) => ipcRenderer.invoke('webpage:harvest', allTabs),
   crawl: (opts) => ipcRenderer.invoke('webpage:crawl', opts),
@@ -125,6 +126,7 @@ contextBridge.exposeInMainWorld('assistant', {
 
   // Widget ↔ dashboard window controls.
   openDashboard: (tab) => ipcRenderer.invoke('window:open-dashboard', tab),
+  openActivity: () => ipcRenderer.invoke('window:open-activity'),
   hideWidget: () => ipcRenderer.invoke('widget:hide'),
   quitApp: () => ipcRenderer.invoke('widget:quit'),
   collapseWidget: (collapsed) => ipcRenderer.invoke('widget:collapse', collapsed),
