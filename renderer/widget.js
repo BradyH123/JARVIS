@@ -573,6 +573,16 @@ async function runCommand(text) {
     setState('idle');
     return;
   }
+  // Self-diagnosis — "where are you struggling", "what's your weakest", "diagnose
+  // yourself". Reads telemetry + conversation logs for the biggest friction.
+  if (api.diagnose && /\b(where (are you|do you|are u) struggl|what.*(struggl|weak|worst|failing|going wrong|need.*improv)|diagnose (yourself|your)|self.?diagnos|your (weak(est)?|worst) (spot|area|point)|what.*(bad|worst) at)\b/i.test(text)) {
+    log('info', '🩺 Diagnosing where I struggle most…');
+    const d = await api.diagnose();
+    (d.text || 'Not enough data yet.').split('\n').forEach((l) => l.trim() && log('think', l));
+    say((d.summary || 'I need more data to tell where I struggle.').slice(0, 240), { interrupt: true });
+    setState('idle');
+    return;
+  }
   // "What have you learned (about how I work)?" — the interface playbook.
   // Anchored to the whole utterance so content questions ("what did you learn
   // about my meeting notes?") still reach the memory-aware router.

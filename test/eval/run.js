@@ -324,18 +324,25 @@ check('autonomy: advisor dedupes tasks, persists progress across cycles', 'corre
   // Reworded duplicates collapse to the same key.
   assert.strictEqual(advisor.taskKey('Post a launch announcement!'), advisor.taskKey('post a launch announcement'));
 
-  // filterNew keeps only unseen tasks and grows the set.
+  // filterNew is PURE: it dedupes within a batch and against seen keys, but
+  // does NOT mark anything done (the caller records a task only after it runs).
   const seen = new Set();
   const round1 = advisor.filterNew(
     [{ task: 'Post on X' }, { task: 'Email 10 leads' }, { task: 'Post on X' }],
     seen
   );
   assert.strictEqual(round1.length, 2, 'dupes within a batch collapse');
+  assert.strictEqual(seen.size, 0, 'filterNew does NOT mutate the seen set');
+  // Caller records only the tasks it actually runs (simulate running the first).
+  seen.add(advisor.taskKey('Post on X'));
   const round2 = advisor.filterNew([{ task: 'post on x' }, { task: 'Write a blog post' }], seen);
-  assert.strictEqual(round2.length, 1, 'already-seen task from a prior cycle is skipped');
+  assert.strictEqual(round2.length, 1, 'already-done task from a prior cycle is skipped');
   assert.strictEqual(round2[0].task, 'Write a blog post');
+  // A task that was extracted but never run (capped) is NOT skipped next time.
+  assert.strictEqual(advisor.filterNew([{ task: 'Email 10 leads' }], seen).length, 1, 'un-run task stays available');
 
   // Done-set persists across "restarts".
+  seen.add(advisor.taskKey('Write a blog post'));
   advisor.saveDone(dir, seen);
   const reloaded = advisor.loadDone(dir);
   assert.ok(reloaded.has(advisor.taskKey('Post on X')) && reloaded.has(advisor.taskKey('Write a blog post')));
@@ -347,6 +354,40 @@ check('autonomy: advisor dedupes tasks, persists progress across cycles', 'corre
     results: [{ task: 'Post on X', status: 'done', detail: 'posted' }],
   });
   assert.ok(p && /Post on X/.test(fs.readFileSync(p, 'utf8')) && /done/.test(fs.readFileSync(p, 'utf8')));
+});
+
+check('self-awareness: diagnose ranks weak capabilities + mines complaints', 'correctness', () => {
+  const diagnose = R('diagnose.js');
+  const a = diagnose.analyze({
+    telemetry: {
+      total: 30,
+      successRate: 70,
+      kinds: [
+        { kind: 'goal', count: 10, successRate: 40, avgMs: 8000 },
+        { kind: 'quick', count: 15, successRate: 100, avgMs: 200 },
+        { kind: 'advisor', count: 4, successRate: 50, avgMs: 20000 },
+        { kind: 'rare', count: 1, successRate: 0 }, // too few runs → ignored
+      ],
+      topErrors: [{ error: 'No screen source available', count: 5 }],
+    },
+    conversationLines: [
+      "it says done but doesn't report back",
+      'the voice control still doesnt work',
+      "it can't click and misses most clicks",
+      'it just opens stuff and doesnt tell me anything',
+      'summarize this tab', // neutral command, not a complaint → ignored
+    ],
+  });
+  // Weakest kinds: worst success first, and the 1-run 'rare' is excluded.
+  assert.strictEqual(a.weakestKinds[0].kind, 'goal', 'lowest success rate leads');
+  assert.ok(!a.weakestKinds.some((k) => k.kind === 'rare'), 'single-run kinds excluded');
+  assert.ok(!a.weakestKinds.some((k) => k.kind === 'quick'), '100%-success kinds excluded');
+  // Complaint mining buckets by topic; neutral commands are not counted.
+  assert.ok(a.complaints >= 4 && a.complaints < 5, 'only complaint lines counted');
+  const topics = a.complaintTopics.map((c) => c.topic);
+  assert.ok(topics.includes('acting & reporting') && topics.includes('voice & listening') && topics.includes('clicking & navigation'));
+  const rep = diagnose.report(a);
+  assert.ok(/struggle/i.test(rep) && /goal/.test(rep) && /No screen source/.test(rep));
 });
 
 // ---------- CORRECTNESS ----------
