@@ -48,6 +48,7 @@ const axtree = require('./lib/axtree');
 const windows = require('./lib/windows');
 const bgbrowser = require('./lib/bgbrowser');
 const ongoing = require('./lib/ongoing');
+const scheduler = require('./lib/scheduler');
 const claudeapp = require('./lib/claudeapp');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
@@ -595,7 +596,8 @@ function registerIpc() {
             'Use search engines and authoritative sites. When you have gathered enough for this ' +
             'cycle, call finish with a DETAILED summary of concrete findings — facts, numbers, ' +
             'names, and the source sites/URLs they came from.',
-          { onEvent: cycleSend, shouldAbort: () => task.stopRequested || bgAbort, maxSteps: 20 }
+          // 15 steps/cycle: enough for search → open 2-3 sources → summarize.
+          { onEvent: cycleSend, shouldAbort: () => task.stopRequested || bgAbort, maxSteps: 15 }
         );
       } finally {
         bgRunning = false;
@@ -619,7 +621,13 @@ function registerIpc() {
       }
     };
     const notesDir = path.join(memory.vaultPath(), 'Research');
-    const t = ongoing.start(g, { notesDir, minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : undefined }, { research, synthesize, onEvent });
+    // 45s between cycles: an always-on task should sip credits, not gulp them —
+    // research doesn't get better by running cycles back-to-back.
+    const t = ongoing.start(
+      g,
+      { notesDir, pauseMs: 45000, minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : undefined },
+      { research, synthesize, onEvent }
+    );
     if (t.error) return t;
     memory.logTurn('user', `(ongoing) ${g}`, 'widget');
     memory.logTurn('assistant', `(ongoing started) ${g} → ${t.notePath}`, 'widget');
@@ -633,6 +641,16 @@ function registerIpc() {
     ongoing.prune();
     return l;
   });
+
+  // Scheduled actions: persistently run any command later / on a repeat.
+  ipcMain.handle('schedule:add', async (_e, payload) => {
+    const job = scheduler.add(payload && payload.command, payload && payload.when);
+    if (!job.error) memory.logTurn('assistant', `(scheduled) ${scheduler.describe(job)}`, 'widget');
+    return job.error ? job : { ...job, text: scheduler.describe(job) };
+  });
+  ipcMain.handle('schedule:list', async () => scheduler.list());
+  ipcMain.handle('schedule:remove', async (_e, id) => scheduler.remove(id));
+  ipcMain.handle('schedule:clear', async () => scheduler.clear());
 
   // Background browser: complete a web task in a HIDDEN browser JARVIS drives via
   // the DOM — off-screen, so the user keeps full use of their mouse/screen. Runs
@@ -1615,6 +1633,17 @@ app.whenReady().then(() => {
   memory.init(vaultDir);
   telemetry.init(app.getPath('userData'));
   sweep.init(path.join(app.getPath('userData'), 'index'));
+  // Scheduled actions survive restarts; when one comes due, wake the widget and
+  // run the command through the normal pipeline (so a schedule can trigger
+  // anything JARVIS can do — quick actions, background/ongoing tasks, plans).
+  scheduler.init(app.getPath('userData'));
+  scheduler.startTicking((job) => {
+    memory.logTurn('assistant', `(schedule fired) ${job.command}`, 'widget');
+    telemetry.record({ kind: 'schedule', goal: job.command, status: 'fired', durationMs: 0 });
+    showWidget();
+    // Give the widget a beat to be ready before handing it the command.
+    setTimeout(() => broadcast('schedule:fire', { id: job.id, command: job.command, text: scheduler.describe(job) }), 600);
+  });
   watch = new WatchBuffer({
     capture: captureSized,
     intervalMs: config.getWatchIntervalMs(),

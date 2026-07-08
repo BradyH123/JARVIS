@@ -537,6 +537,28 @@ async function runCommand(text) {
       return;
     }
   }
+  // Schedule management — list and cancel (creation goes through the router,
+  // which parses the natural-language time into a structured schedule).
+  if (api.schedule && /^\s*(what('s| is| do i have)? |list |show )?(my )?(scheduled( tasks?| actions?)?|schedules?|reminders?)\??\s*$/i.test(text)) {
+    const l = await api.schedule.list();
+    if (!l.length) {
+      log('info', 'Nothing scheduled.');
+      say('Nothing is scheduled right now.');
+    } else {
+      log('info', `${l.length} scheduled:`);
+      l.forEach((j) => log('think', '⏰ ' + j.text));
+      say(`You have ${l.length} scheduled task${l.length === 1 ? '' : 's'}.`);
+    }
+    setState('idle');
+    return;
+  }
+  if (api.schedule && /^\s*(cancel|clear|delete|remove)\s+(all\s+)?(my\s+)?(the\s+)?(scheduled( tasks?| actions?)?|schedules?|reminders?)\s*$/i.test(text)) {
+    const r = await api.schedule.clear();
+    log('info', `Cancelled ${r.removed} scheduled task(s).`);
+    say(r.removed ? 'Cancelled all scheduled tasks.' : 'There was nothing scheduled.', { interrupt: true });
+    setState('idle');
+    return;
+  }
   // Background web task — "in the background, …", "quietly …", "while I keep
   // working, …", "without taking over my screen, …". Runs in a hidden browser.
   const bgM = /^\s*(?:in the background|behind the scenes|quietly|without (?:taking over|using) (?:my )?(?:screen|mouse)|while i(?:'m| am)? (?:keep )?(?:working|using|busy)[^,]*)[,:]?\s*(.+)/i.exec(text);
@@ -638,6 +660,16 @@ async function runCommand(text) {
       say('Opening your Claude Code session and typing the request in.', { interrupt: true });
       await api.improve.viaScreen(routed.request);
       log('info', 'Sent. When Claude Code finishes, say "upload yourself" then "reload yourself".');
+    } else if (routed.action === 'schedule_task') {
+      const job = await api.schedule.add({ command: routed.command, when: routed.when });
+      if (job && job.error) {
+        log('warn', job.error);
+        say(job.error, { interrupt: true });
+      } else {
+        log('info', '⏰ Scheduled: ' + (job.text || routed.command));
+        say('Scheduled — ' + (job.text || routed.command) + '.', { interrupt: true });
+      }
+      setState('idle');
     } else if (routed.action === 'ongoing_task') {
       const mins = routed.minutes ? ` for ${routed.minutes} minutes` : '';
       log('info', '♾ Ongoing task started' + mins + ' — I will keep working until you say stop.');
@@ -1063,6 +1095,16 @@ function showReloadPrompt() {
     'I rewrote my own source. Reloading restarts me with the changes.';
   confirmBox.classList.remove('hidden');
   reloadPending = true;
+}
+
+// A schedule came due — run its command exactly as if the user typed it, so a
+// schedule can trigger anything JARVIS can do (quick actions, ongoing tasks…).
+if (api.onScheduleFire) {
+  api.onScheduleFire((job) => {
+    log('info', '⏰ Scheduled task fired: ' + (job.text || job.command));
+    say('Time for your scheduled task.', { interrupt: true });
+    runCommand(job.command);
+  });
 }
 
 setState('idle');

@@ -108,6 +108,22 @@ check('grounding: background browser builds a safe locator + page block', 'corre
   // pageBlock renders url/title/text + a ref-tagged element map.
   const block = bg.pageBlock({ url: 'https://x.io', title: 'T', text: 'hello', interface: [{ ref: 0, tag: 'a', type: 'link', label: 'Home', href: '/h' }] });
   assert.ok(/URL: https:\/\/x\.io/.test(block) && /\[0\] a\(link\) "Home"/.test(block));
+  // Token-cost control: only the newest N page states survive in the history;
+  // older ones keep their status/URL lines but drop the bulky page text.
+  const mkPage = (n) => bg.pageBlock({ url: 'https://p' + n, title: 'P' + n, text: 'body of page ' + n, interface: [] });
+  const messages = [
+    { role: 'user', content: [{ type: 'text', text: 'Goal: g\n\nCurrent background browser page:\n' + mkPage(1) }] },
+    { role: 'assistant', content: [] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a', content: [{ type: 'text', text: 'OK\n\nPage now:\n' + mkPage(2) }] }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'b', content: [{ type: 'text', text: 'OK\n\nPage now:\n' + mkPage(3) }] }] },
+  ];
+  const cut = bg.prunePageStates(messages, 2);
+  assert.strictEqual(cut, 1, 'one stale page state pruned');
+  const first = messages[0].content[0].text;
+  assert.ok(/Goal: g/.test(first) && /pruned to save tokens/.test(first) && !/body of page 1/.test(first), 'oldest page text dropped, goal kept');
+  assert.ok(/body of page 3/.test(messages[3].content[0].content[0].text), 'newest page state intact');
+  // Pruning again is stable — already-pruned blocks aren't double-counted.
+  assert.strictEqual(bg.prunePageStates(messages, 2), 0);
 });
 
 check('autonomy: ongoing task loops until told to stop, then enhances its work', 'correctness', async () => {
@@ -155,6 +171,50 @@ check('autonomy: ongoing task loops until told to stop, then enhances its work',
   assert.strictEqual(finalT2.status, 'done', 'time budget ends the task by itself');
   ongoing.prune();
   assert.strictEqual(ongoing.list().length, 0, 'prune clears finished tasks');
+});
+
+check('autonomy: scheduler computes fire times, persists, and ticks correctly', 'correctness', () => {
+  const sched = R('scheduler.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-sch-'));
+  sched.init(dir);
+  sched.clear();
+
+  // computeNext: daily rolls to tomorrow when today's time already passed.
+  const base = new Date('2026-07-08T10:00:00').getTime();
+  const daily = sched.computeNext({ kind: 'daily', time: '09:00' }, base);
+  assert.strictEqual(new Date(daily).getHours(), 9);
+  assert.ok(daily > base && daily - base < 24 * 3600 * 1000, 'daily fires within 24h');
+  // weekly lands on the right weekday, in the future.
+  const weekly = sched.computeNext({ kind: 'weekly', weekday: 1, time: '08:30' }, base);
+  assert.strictEqual(new Date(weekly).getDay(), 1);
+  assert.ok(weekly > base);
+  // once in the past never fires; every N minutes is relative.
+  assert.strictEqual(sched.computeNext({ kind: 'once', atMs: base - 1000 }, base), null);
+  assert.strictEqual(sched.computeNext({ kind: 'every', minutes: 15 }, base), base + 15 * 60000);
+  // normalizeWhen: "in 30 minutes" → a once spec ~30min out.
+  const w = sched.normalizeWhen({ kind: 'once_in', minutes: 30 }, base);
+  assert.strictEqual(w.kind, 'once');
+  assert.strictEqual(w.atMs, base + 30 * 60000);
+  assert.strictEqual(sched.normalizeWhen({ kind: 'once_in' }), null, 'missing minutes rejected');
+
+  // add → persists to disk → survives re-init.
+  const job = sched.add('open my email', { kind: 'daily', time: '09:00' });
+  assert.ok(!job.error && job.nextAt > Date.now());
+  assert.ok(/every day at 09:00/.test(sched.describe(job)));
+  sched.init(dir); // simulate restart
+  assert.strictEqual(sched.list().length, 1, 'schedule survives restart');
+
+  // tick: one-shots fire once and vanish; recurring reschedule forward.
+  const once = sched.add('say hi', { kind: 'once', atMs: Date.now() + 5 });
+  assert.ok(!once.error, 'future one-shot accepted');
+  const fired = [];
+  sched.tick(Date.now() + 10, (j) => fired.push(j.command));
+  assert.ok(fired.includes('say hi'), 'due one-shot fired');
+  assert.ok(!sched.list().some((j) => j.command === 'say hi'), 'one-shot removed after firing');
+  const dailyJob = sched.list().find((j) => j.command === 'open my email');
+  assert.ok(dailyJob.nextAt > Date.now(), 'recurring job rescheduled into the future');
+  sched.clear();
+  assert.strictEqual(sched.list().length, 0);
 });
 
 // ---------- CORRECTNESS ----------

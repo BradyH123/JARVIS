@@ -47,6 +47,13 @@ contextBridge.exposeInMainWorld('assistant', {
     stop: (id) => ipcRenderer.invoke('ongoing:stop', id),
     list: () => ipcRenderer.invoke('ongoing:list'),
   },
+  schedule: {
+    add: (payload) => ipcRenderer.invoke('schedule:add', payload),
+    list: () => ipcRenderer.invoke('schedule:list'),
+    remove: (id) => ipcRenderer.invoke('schedule:remove', id),
+    clear: () => ipcRenderer.invoke('schedule:clear'),
+  },
+  onScheduleFire: (cb) => ipcRenderer.on('schedule:fire', (_e, job) => cb(job)),
   harvest: (allTabs) => ipcRenderer.invoke('webpage:harvest', allTabs),
   crawl: (opts) => ipcRenderer.invoke('webpage:crawl', opts),
   sweep: {
