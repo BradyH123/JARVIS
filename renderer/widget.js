@@ -518,6 +518,18 @@ async function runCommand(text) {
     setState('idle');
     return;
   }
+  // Instant "close/quit <app>" — no overthinking. (Not tabs; not a pronoun.)
+  const quitM = /^\s*(?:quit|close|exit|kill)\s+(?:the\s+)?(.+?)(?:\s+app)?\s*$/i.exec(text);
+  if (api.quick && quitM && quitM[1]) {
+    const target = quitM[1].trim();
+    const isTabsOrSelf = /^(all\s+)?(my\s+)?tabs?$/i.test(target) || /\btabs?\b/i.test(text) || /^(it|this|that|the window|window|everything)$/i.test(target);
+    if (!isTabsOrSelf && target.length >= 2) {
+      log('info', 'Closing ' + target + '…');
+      say('Closing ' + target + '.', { interrupt: true });
+      await api.quick({ kind: 'quit_app', target });
+      return;
+    }
+  }
   // Prompt the Claude Code app directly: "prompt claude code: …", "tell claude
   // code to …", "in claude code, …", "ask claude to …".
   const ccM = /^\s*(?:prompt|tell|ask|in)\s+claude(?:\s+code)?[,:]?\s*(?:to\s+)?(.+)/i.exec(text);
