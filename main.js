@@ -45,6 +45,7 @@ const terminal = require('./lib/shell');
 const webpage = require('./lib/webpage');
 const crawler = require('./lib/crawler');
 const axtree = require('./lib/axtree');
+const claudeapp = require('./lib/claudeapp');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
 const sweep = require('./lib/sweep');
@@ -1127,12 +1128,53 @@ function registerIpc() {
     send({ type: 'started', goal: 'Handing this to your Claude Code session' });
     memory.logTurn('assistant', `(delegated to on-screen Claude Code) ${req}`, 'widget');
     try {
-      const result = await runSingleSession(null, ONSCREEN_TASK(req), send);
+      // Prefer the DETERMINISTIC path: activate Claude Code, click its input,
+      // type the request, submit. Fall back to the visual agent if that fails.
+      const promptText =
+        `${req}. Make this change in the JARVIS repository you're working in, keep the app ` +
+        'working, run node test/smoke.js, and commit when the tests pass.';
+      const direct = await claudeapp.promptClaudeCode(promptText, send).catch((e) => ({ ok: false, error: e.message }));
+      let result;
+      if (direct.ok) {
+        send({ type: 'thinking', text: `Prompted ${direct.app}. It will make the change — say "upload yourself" then "reload yourself" when it's done.` });
+        result = { status: 'done', engine: 'claude-app', app: direct.app };
+      } else {
+        send({ type: 'thinking', text: `Direct prompt didn't work (${direct.error}); using the visual approach.` });
+        result = await runSingleSession(null, ONSCREEN_TASK(req), send);
+      }
       memory.logTurn('assistant', `(delegated task ${result.status}) ${req}`, 'widget');
       send({ type: 'finished', ...result });
       return result;
     } catch (err) {
       send({ type: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    } finally {
+      sessionRunning = false;
+    }
+  });
+
+  // Directly type ANY prompt into the Claude Code app and submit it.
+  ipcMain.handle('claudecode:prompt', async (_e, text) => {
+    if (sessionRunning || improveRunning) return { status: 'busy' };
+    const send = (evt) => broadcast('agent:event', evt);
+    sessionAbort = false;
+    sessionRunning = true;
+    send({ type: 'started', goal: 'Prompting Claude Code' });
+    try {
+      const r = await claudeapp.promptClaudeCode(String(text || ''), send);
+      if (r.ok) {
+        const msg = `Prompted ${r.app}.`;
+        memory.logTurn('assistant', `(prompted Claude Code) ${String(text || '').slice(0, 120)}`, 'widget');
+        send({ type: 'done', message: msg });
+        send({ type: 'finished', status: 'done', message: msg });
+        return { status: 'done', app: r.app };
+      }
+      send({ type: 'error', message: r.error });
+      send({ type: 'finished', status: 'error', message: r.error });
+      return { status: 'error', message: r.error };
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
       return { status: 'error', message: err.message };
     } finally {
       sessionRunning = false;

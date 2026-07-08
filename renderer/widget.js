@@ -518,6 +518,15 @@ async function runCommand(text) {
     setState('idle');
     return;
   }
+  // Prompt the Claude Code app directly: "prompt claude code: …", "tell claude
+  // code to …", "in claude code, …", "ask claude to …".
+  const ccM = /^\s*(?:prompt|tell|ask|in)\s+claude(?:\s+code)?[,:]?\s*(?:to\s+)?(.+)/i.exec(text);
+  if (api.promptClaudeCode && ccM && ccM[1] && ccM[1].trim().length > 2) {
+    log('info', '⌨️ Prompting Claude Code…');
+    say('Typing that into Claude Code.', { interrupt: true });
+    await api.promptClaudeCode(ccM[1].trim());
+    return;
+  }
   // Explicit orchestrator trigger: "do this: …", "do everything: …", "handle this
   // for me: …", "for me, …" → plan-and-execute multi-step.
   const doM = /^\s*(do (this|everything|all of this|the following)|handle (this|it) for me|take care of|for me[,:])\s*[:\-]?\s*(.+)/i.exec(text);

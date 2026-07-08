@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('assistant', {
   doAnything: (goal) => ipcRenderer.invoke('assistant:do', goal),
   axElements: () => ipcRenderer.invoke('ax:elements'),
   axClick: (label) => ipcRenderer.invoke('ax:click', label),
+  promptClaudeCode: (text) => ipcRenderer.invoke('claudecode:prompt', text),
   harvest: (allTabs) => ipcRenderer.invoke('webpage:harvest', allTabs),
   crawl: (opts) => ipcRenderer.invoke('webpage:crawl', opts),
   sweep: {
