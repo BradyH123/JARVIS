@@ -52,6 +52,7 @@ const scheduler = require('./lib/scheduler');
 const learning = require('./lib/learning');
 const selfmodel = require('./lib/selfmodel');
 const advisor = require('./lib/advisor');
+const diagnose = require('./lib/diagnose');
 const frontmost = require('./lib/frontmost');
 
 // Refresh JARVIS's living self-model (Self.md): real version from git, what
@@ -267,11 +268,18 @@ function createActivityWindow() {
     return activityWindow;
   }
   const wa = screen.getPrimaryDisplay().workArea;
+  const saved = config.getActivityState ? config.getActivityState() : {};
+  // Large by default (a real monitoring surface), but never bigger than the
+  // screen; restores the user's last size/position.
+  const width = Math.min(saved.width || 980, wa.width - 40);
+  const height = Math.min(saved.height || 820, wa.height - 40);
   activityWindow = new BrowserWindow({
-    width: 640,
-    height: 620,
-    x: wa.x + 40,
-    y: wa.y + 60,
+    width,
+    height,
+    minWidth: 460,
+    minHeight: 380,
+    x: Number.isFinite(saved.x) ? saved.x : wa.x + 40,
+    y: Number.isFinite(saved.y) ? saved.y : wa.y + 40,
     title: 'JARVIS Activity',
     backgroundColor: '#0a0e14',
     webPreferences: {
@@ -280,7 +288,25 @@ function createActivityWindow() {
       nodeIntegration: false,
     },
   });
+  if (saved.onTop) activityWindow.setAlwaysOnTop(true, 'floating');
   activityWindow.loadFile(path.join(__dirname, 'renderer', 'activity.html'));
+  // Persist size/position so the monitor window stays where the user put it.
+  const persist = () => {
+    if (!activityWindow || activityWindow.isDestroyed()) return;
+    const [x, y] = activityWindow.getPosition();
+    const [w, h] = activityWindow.getSize();
+    if (config.setActivityState) config.setActivityState({ x, y, width: w, height: h });
+  };
+  let persistTimer = null;
+  const debouncedPersist = () => {
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(persist, 400);
+  };
+  activityWindow.on('resize', debouncedPersist);
+  activityWindow.on('move', debouncedPersist);
+  activityWindow.webContents.on('did-finish-load', () => {
+    activityWindow.webContents.send('activity:ontop', activityWindow.isAlwaysOnTop());
+  });
   activityWindow.on('closed', () => {
     activityWindow = null;
   });
@@ -663,13 +689,18 @@ function registerIpc() {
     const g = String(goal || '').trim();
     if (!g) return { error: 'What should I keep working on?' };
     const send = (evt) => broadcast('agent:event', evt);
-    bgAbort = false; // a fresh task clears any earlier STOP
+    // NOTE: do NOT reset the global bgAbort here — an ongoing task has its own
+    // stop signal (task.stopRequested, set by ongoing.stop), and clearing
+    // bgAbort would un-cancel a manual background task the user just STOPped.
 
     // Each cycle drives the ONE hidden browser — wait politely if a manual
-    // background task holds it, and never run two cycles into it at once.
+    // background task holds it, and never run two cycles into it at once. Bail
+    // out of the wait if the task is stopped OR its time budget has elapsed.
     const research = async (task, angle) => {
-      while (bgRunning && !task.stopRequested) await new Promise((r) => setTimeout(r, 400));
-      if (task.stopRequested) return { message: '' };
+      while (bgRunning && !task.stopRequested && (!task.deadline || Date.now() < task.deadline)) {
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      if (task.stopRequested || (task.deadline && Date.now() >= task.deadline)) return { message: '' };
       bgRunning = true;
       try {
         const prior = task.lastFinding ? `\nAlready noted (do NOT repeat, go deeper): ${task.lastFinding.slice(0, 500)}` : '';
@@ -685,7 +716,8 @@ function registerIpc() {
             'cycle, call finish with a DETAILED summary of concrete findings — facts, numbers, ' +
             'names, and the source sites/URLs they came from.',
           // 15 steps/cycle: enough for search → open 2-3 sources → summarize.
-          { onEvent: cycleSend, shouldAbort: () => task.stopRequested || bgAbort, maxSteps: 15 }
+          // Stop on this task's own signal, a global STOP, or the time budget.
+          { onEvent: cycleSend, shouldAbort: () => task.stopRequested || bgAbort || (task.deadline && Date.now() >= task.deadline), maxSteps: 15 }
         );
       } finally {
         bgRunning = false;
@@ -811,6 +843,10 @@ function registerIpc() {
         }
         const detail = (res.message || '').replace(/\bDONE\b/, '').trim().slice(0, 200);
         results.push({ task: task.task, status: res.status, detail });
+        // Only mark a task done when it actually SUCCEEDED — a transient failure
+        // (app not open, denied, network) is then retried next cycle instead of
+        // being silently skipped forever.
+        if (res.status === 'done') doneSet.add(advisor.taskKey(task.task));
         send({ type: 'step-finished', index: i, status: res.status, label: task.task + (detail ? ' — ' + detail.slice(0, 120) : '') });
         memory.logTurn('assistant', `(advisor did: ${task.task}) [${res.status}] ${detail}`, 'widget');
       }
@@ -835,6 +871,16 @@ function registerIpc() {
     } finally {
       sessionRunning = false;
     }
+  });
+
+  // Self-diagnosis: read my telemetry + conversation logs and report where I
+  // struggle most — data-driven, from this machine's real history.
+  ipcMain.handle('diagnose:run', async () => {
+    const a = diagnose.analyze({
+      telemetry: telemetry.summary(),
+      conversationLines: memory.recentConversation(400),
+    });
+    return { ...a, text: diagnose.report(a) };
   });
 
   // What has watching taught him? The interface-playbook summary.
@@ -1761,6 +1807,14 @@ function registerIpc() {
   ipcMain.handle('window:open-activity', async () => {
     createActivityWindow();
     return { ok: true };
+  });
+  // Pin/unpin the Activity monitor above other windows so it's always visible.
+  ipcMain.handle('activity:toggle-ontop', async () => {
+    if (!activityWindow || activityWindow.isDestroyed()) return { onTop: false };
+    const next = !activityWindow.isAlwaysOnTop();
+    activityWindow.setAlwaysOnTop(next, 'floating');
+    if (config.setActivityState) config.setActivityState({ onTop: next });
+    return { onTop: next };
   });
   ipcMain.handle('window:open-dashboard', async (_e, tab) => {
     const win = createWindow(true);

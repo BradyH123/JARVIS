@@ -19,6 +19,20 @@ document.getElementById('clear').addEventListener('click', () => {
   feed.innerHTML = '';
 });
 
+// Pin: keep the monitor above everything so it's watchable at all times.
+const pinBtn = document.getElementById('pin');
+function renderPin(on) {
+  pinBtn.classList.toggle('on', !!on);
+  pinBtn.textContent = on ? '📌 Pinned' : '📌 Pin';
+}
+if (pinBtn && api.toggleActivityOnTop) {
+  pinBtn.addEventListener('click', async () => {
+    const r = await api.toggleActivityOnTop();
+    renderPin(r && r.onTop);
+  });
+  if (api.onActivityOnTop) api.onActivityOnTop(renderPin);
+}
+
 const MAX_ROWS = 500;
 const tasks = new Map(); // id -> { name, meta, kind, pct, active, startedAt }
 
@@ -104,9 +118,13 @@ function renderTasks() {
   }
 }
 
-// A single "foreground" task slot keyed by the run, plus persistent slots for
-// ongoing tasks keyed by their id.
-let fgId = 0;
+// Foreground and background runs are broadcast on the SAME event channel and
+// can run in parallel, so they need SEPARATE slots — keyed by nature, not one
+// shared id (which would orphan tasks and leak the Map). Ongoing tasks get
+// their own id-keyed slots.
+function runKey(evt) {
+  return evt && evt.background ? 'bg' : 'fg';
+}
 function upsertTask(id, patch) {
   const cur = tasks.get(id) || {};
   tasks.set(id, { ...cur, ...patch });
@@ -124,8 +142,7 @@ if (api.onAgentEvent) {
       case 'started': {
         setState('running');
         nowEl.textContent = evt.goal || 'Working…';
-        fgId = 'fg' + Date.now();
-        upsertTask(fgId, { name: evt.goal || 'Task', meta: bg || 'running', active: true, pct: null });
+        upsertTask(runKey(evt), { name: evt.goal || 'Task', meta: bg || 'running', active: true, pct: null });
         addRow('started', evt.goal || 'Started', bg || undefined);
         break;
       }
@@ -141,12 +158,12 @@ if (api.onAgentEvent) {
         addRow('log', evt.text);
         break;
       case 'step-started':
-        upsertTask(fgId, { meta: `step ${evt.index + 1}/${evt.total}`, pct: ((evt.index) / evt.total) * 100, active: true });
+        upsertTask(runKey(evt), { meta: `step ${evt.index + 1}/${evt.total}`, pct: ((evt.index) / evt.total) * 100, active: true });
         nowEl.textContent = `(${evt.index + 1}/${evt.total}) ${evt.label || ''}`;
         addRow('step-started', `Step ${evt.index + 1}/${evt.total}: ${evt.label || ''}`);
         break;
       case 'step-finished':
-        upsertTask(fgId, { pct: ((evt.index + 1) / (evt.total || evt.index + 1)) * 100 });
+        upsertTask(runKey(evt), { pct: ((evt.index + 1) / (evt.total || evt.index + 1)) * 100 });
         addRow('step-finished', evt.label || `Step ${evt.index + 1} ${evt.status || 'done'}`);
         break;
       case 'permission':
@@ -158,7 +175,7 @@ if (api.onAgentEvent) {
       case 'finished':
         setState(evt.status === 'error' ? 'error' : 'done');
         nowEl.textContent = evt.status === 'error' ? 'Error' : 'Idle';
-        if (fgId) dropTask(fgId);
+        dropTask(runKey(evt));
         break;
       case 'error':
         setState('error');
@@ -166,7 +183,7 @@ if (api.onAgentEvent) {
         break;
       case 'aborted':
         addRow('aborted', 'Stopped.');
-        if (fgId) dropTask(fgId);
+        dropTask(runKey(evt));
         break;
       // Ongoing ("always online") tasks get their own persistent slot.
       case 'ongoing-started':
