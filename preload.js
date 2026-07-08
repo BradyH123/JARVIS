@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('assistant', {
     runNow: (id) => ipcRenderer.invoke('schedule:run-now', id),
     report: (payload) => ipcRenderer.invoke('schedule:report', payload),
   },
+  // "Write me a report on X" → a real, opened deliverable in the vault.
+  buildReport: (topic) => ipcRenderer.invoke('report:build', topic),
   // Dashboard → widget: hand text to the widget's full command pipeline.
   relayCommand: (text) => ipcRenderer.invoke('assistant:relay', text),
   onRelayedCommand: (cb) => ipcRenderer.on('widget:command', (_e, text) => cb(text)),

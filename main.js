@@ -845,6 +845,72 @@ function registerIpc() {
     return l;
   });
 
+  // "Write me a report on X" — a REAL deliverable, not a file search: gather
+  // what JARVIS already knows from the memory vault, research the gaps in the
+  // background browser if the notes are thin, write a polished markdown report
+  // into the vault, and OPEN it so the user actually receives it.
+  ipcMain.handle('report:build', async (_e, payload) => {
+    const topic = String((payload && payload.topic) || payload || '').trim();
+    if (!topic) return { error: 'What should the report be about?' };
+    const send = (evt) => broadcast('agent:event', evt);
+    send({ type: 'started', goal: `📝 Report: ${topic}` });
+    try {
+      // 1) What do the vault notes already say? (research notes, logs, lessons)
+      const known = memory.search(topic, 8) || [];
+      const knownText = known.map((k) => `— ${k.excerpt} (from ${k.path})`).join('\n');
+      if (known.length) send({ type: 'thinking', text: `Found ${known.length} note(s) about this in my vault.` });
+      // 2) Thin notes → one focused background-browser research pass first.
+      let researched = '';
+      if (known.length < 2 && !bgRunning) {
+        send({ type: 'thinking', text: 'Not much in my notes yet — researching this quickly first.' });
+        bgRunning = true;
+        try {
+          const r = await bgbrowser
+            .run(
+              `Research "${topic}" so a written report can be produced. Use search engines and ` +
+                'authoritative sites. When you have enough, call finish with a DETAILED summary of ' +
+                'concrete findings — facts, numbers, names, and the source sites they came from.',
+              { shouldAbort: () => bgAbort, maxSteps: 12 }
+            )
+            .catch(() => ({ message: '' }));
+          researched = (r && r.message) || '';
+        } finally {
+          bgRunning = false;
+        }
+      }
+      const material =
+        [knownText && 'From my saved notes:\n' + knownText, researched && 'Fresh research:\n' + researched]
+          .filter(Boolean)
+          .join('\n\n') || `No notes available — write from general knowledge about: ${topic}`;
+      // 3) Synthesize the report.
+      send({ type: 'thinking', text: 'Writing the report…' });
+      const body = await claude.answerFromText(
+        'Write a polished, well-organized report on the topic from this material: clear headings, ' +
+          'every concrete fact/number/source kept, contradictions resolved, and a short takeaways ' +
+          'list at the end. Markdown.',
+        `Report: ${topic}`,
+        material.slice(0, 60000)
+      );
+      // 4) Save it in the vault and open it — the user SEES the deliverable.
+      const dir = path.join(memory.vaultPath(), 'Reports');
+      fs.mkdirSync(dir, { recursive: true });
+      const slug = topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'report';
+      const file = path.join(dir, `${slug}-${new Date().toISOString().slice(0, 10)}.md`);
+      fs.writeFileSync(file, `# Report: ${topic}\n\n${String(body || '').trim()}\n`, 'utf8');
+      shell.openPath(file);
+      memory.logTurn('assistant', `(report written) ${topic} → ${file}`, 'widget');
+      telemetry.record({ kind: 'report', goal: topic, status: 'done', durationMs: 0 });
+      const msg = `Report written and opened: ${path.basename(file)} (saved in your vault under Reports).`;
+      send({ type: 'done', message: msg });
+      send({ type: 'finished', status: 'done', message: msg });
+      return { ok: true, path: file };
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
+      return { error: err.message };
+    }
+  });
+
   // Scheduled actions: persistently run any command later / on a repeat.
   ipcMain.handle('schedule:add', async (_e, payload) => {
     const job = scheduler.add(payload && payload.command, payload && payload.when);

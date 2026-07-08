@@ -397,9 +397,36 @@ async function runCommand(text) {
     await api.sweep.run({ everything });
     return;
   }
+  // A command that CREATES something or drives the web must NEVER be hijacked
+  // into a local file lookup — "open google docs and write me a report…" is a
+  // task to DO, not a Spotlight search of the user's files.
+  const isCreateOrWeb =
+    /\b(write|draft|compose|create|make|build|generate|post|publish|repost|email|send)\b/i.test(text) ||
+    /^\s*(open|go to|visit|launch)\b/i.test(text) ||
+    /\b(google|online|on the (web|internet))\b/i.test(text);
+
+  // "Write/build/give me a report on X" — a real deliverable: gathers what
+  // JARVIS already knows from the vault (+ a quick research pass if the notes
+  // are thin), writes a markdown report, saves it to the vault and OPENS it.
+  if (api.buildReport && /\b(write|build|create|make|draft|generate|put together|give me)\b[\s\S]*\b(report|repost|write-?up)\b/i.test(text)) {
+    let topic = text;
+    const m = /\b(?:report|repost|write-?up)s?\s+(?:on|about|for|of)\s+(.+)$/i.exec(text);
+    if (m) topic = m[1].trim();
+    else {
+      topic = text
+        .replace(/^\s*(open\s+\S+(\s+\S+)?\s+(and|then)\s+)?(please\s+)?(write|build|create|make|draft|generate|put together|give)\s*(me\s+)?(a\s+|an\s+)?(quick\s+|full\s+|detailed\s+)?(report|repost|write-?up)s?\s*/i, '')
+        .trim() || text;
+    }
+    log('info', `📝 Building a report on "${topic}"…`);
+    say('Writing that report now.', { interrupt: true });
+    await api.buildReport({ topic });
+    return;
+  }
+
   // Summarize / read a specific document (find it, extract text, summarize).
   if (
     api.content &&
+    !isCreateOrWeb &&
     /\b(summari[sz]e|read|what does|tell me about)\b.*\b(my|the|this|that)\s+(file|document|doc|pdf|note|report|paper|essay|resume|contract|spreadsheet|letter|memo)\b/i.test(text)
   ) {
     const q = text
@@ -417,6 +444,7 @@ async function runCommand(text) {
   if (
     api.content &&
     !/\bresearch(ing)?\b/i.test(text) && // "research" = web task, not a file search
+    !isCreateOrWeb && // "open google docs and write…" = task to DO, never a file search
     (/\b(files?|docs?|documents?|pdfs?|notes?)\b.*\b(mention|about|contain|that (say|mention)|with|for)\b|\bsearch my (files?|computer|docs?|drive) for\b|\bfind (the )?(doc|document|file|pdf|note)s?\b.*\b(about|that|mention|with|containing)\b/i.test(text))
   ) {
     const q = text
