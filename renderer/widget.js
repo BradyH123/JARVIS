@@ -293,6 +293,23 @@ async function refreshCounts() {
 refreshCounts();
 setInterval(refreshCounts, 4000);
 
+// Startup permission check: on macOS, clicking/typing silently does NOTHING
+// without Accessibility permission — warn the user clearly if it's missing.
+(async () => {
+  try {
+    const info = await api.configInfo();
+    if (info && info.platform === 'darwin' && info.axTrusted === false) {
+      log('warn', "⚠ I can't control the mouse/keyboard yet. Enable JARVIS in System Settings › Privacy & Security › Accessibility, then relaunch.");
+      say('I need accessibility permission to click and type. Enable me in System Settings, privacy, accessibility, then relaunch.', { interrupt: true });
+      setState('idle', 'Grant Accessibility permission to click/type');
+    } else if (info && info.canControl === false) {
+      log('warn', '⚠ Native input module not available — run npm install.');
+    }
+  } catch {
+    /* ignore */
+  }
+})();
+
 /* ---------- live "watching" (REC) indicator ---------- */
 const recEl = document.getElementById('wx-rec');
 if (api.onWatchEvent) {
