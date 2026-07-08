@@ -317,6 +317,38 @@ check('self-awareness: self-model refreshes from live facts and summarizes', 'co
   assert.ok(/\[\[Self\]\]/.test(home) && /Research\//.test(home) && /Learning\//.test(home), 'home index links all sections');
 });
 
+check('autonomy: advisor dedupes tasks, persists progress across cycles', 'correctness', () => {
+  const advisor = R('advisor.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-adv-'));
+
+  // Reworded duplicates collapse to the same key.
+  assert.strictEqual(advisor.taskKey('Post a launch announcement!'), advisor.taskKey('post a launch announcement'));
+
+  // filterNew keeps only unseen tasks and grows the set.
+  const seen = new Set();
+  const round1 = advisor.filterNew(
+    [{ task: 'Post on X' }, { task: 'Email 10 leads' }, { task: 'Post on X' }],
+    seen
+  );
+  assert.strictEqual(round1.length, 2, 'dupes within a batch collapse');
+  const round2 = advisor.filterNew([{ task: 'post on x' }, { task: 'Write a blog post' }], seen);
+  assert.strictEqual(round2.length, 1, 'already-seen task from a prior cycle is skipped');
+  assert.strictEqual(round2[0].task, 'Write a blog post');
+
+  // Done-set persists across "restarts".
+  advisor.saveDone(dir, seen);
+  const reloaded = advisor.loadDone(dir);
+  assert.ok(reloaded.has(advisor.taskKey('Post on X')) && reloaded.has(advisor.taskKey('Write a blog post')));
+  assert.strictEqual(advisor.filterNew([{ task: 'Post on X' }], reloaded).length, 0, 'persisted task stays done');
+
+  // Progress log is written and human-readable.
+  const p = advisor.logProgress(dir, {
+    summary: 'grow the audience',
+    results: [{ task: 'Post on X', status: 'done', detail: 'posted' }],
+  });
+  assert.ok(p && /Post on X/.test(fs.readFileSync(p, 'utf8')) && /done/.test(fs.readFileSync(p, 'utf8')));
+});
+
 // ---------- CORRECTNESS ----------
 check('correctness: URL normalization', 'correctness', () => {
   const { normalizeUrl } = R('quickactions.js');

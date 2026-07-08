@@ -51,6 +51,7 @@ const ongoing = require('./lib/ongoing');
 const scheduler = require('./lib/scheduler');
 const learning = require('./lib/learning');
 const selfmodel = require('./lib/selfmodel');
+const advisor = require('./lib/advisor');
 const frontmost = require('./lib/frontmost');
 
 // Refresh JARVIS's living self-model (Self.md): real version from git, what
@@ -708,6 +709,103 @@ function registerIpc() {
   ipcMain.handle('schedule:list', async () => scheduler.list());
   ipcMain.handle('schedule:remove', async (_e, id) => scheduler.remove(id));
   ipcMain.handle('schedule:clear', async () => scheduler.clear());
+
+  // Advisor loop: READ the advice on screen (e.g. Pulsia AI), extract concrete
+  // action items, and actually GO DO them — then report progress. Designed to
+  // be run on a repeating schedule ("ask Pulsia every 3 min and do what it
+  // says"): it remembers what it already did so it makes progress, not repeats.
+  ipcMain.handle('advisor:cycle', async (_e, payload) => {
+    if (sessionRunning || improveRunning) return { status: 'busy', message: "I'm busy with another task right now." };
+    const source = (payload && payload.source) || 'the advisor on screen';
+    const maxTasks = Math.max(1, Math.min(Number(payload && payload.maxTasks) || 3, 5));
+    const send = (evt) => broadcast('agent:event', evt);
+    sessionAbort = false;
+    sessionRunning = true;
+    send({ type: 'started', goal: `Acting on advice from ${source}` });
+    const t0 = Date.now();
+    try {
+      // 1) READ the whole advice — prefer the live DOM (full page text), fall
+      // back to a vision read of the screen.
+      send({ type: 'thinking', text: `Reading ${source}…` });
+      let advice = '';
+      let where = '';
+      const page = await webpage.readActiveTab().catch(() => ({ ok: false }));
+      if (page.ok && page.text) {
+        advice = page.text;
+        where = page.title || page.url || page.browser || '';
+      } else {
+        const shot = await captureFrame();
+        advice = await claude.describeScreen('Read ALL the advice/instructions currently on the screen, in full.', shot);
+        where = '(screen)';
+        if (page.needsPermission) send({ type: 'thinking', text: page.error });
+      }
+      if (!advice || advice.trim().length < 10) {
+        const m = "I couldn't read any advice on screen. Open the advisor page (and enable \"Allow JavaScript from Apple Events\" for full-page reading).";
+        send({ type: 'error', message: m });
+        send({ type: 'finished', status: 'error', message: m });
+        return { status: 'error', message: m };
+      }
+
+      // 2) EXTRACT concrete action items, skipping anything already done.
+      send({ type: 'thinking', text: 'Working out what to actually do…' });
+      const doneSet = advisor.loadDone(memory.vaultPath());
+      const extracted = await claude.extractActionItems(advice, {
+        context: memory.contextForPrompt(),
+        alreadyDone: [...doneSet].slice(-30),
+      });
+      const fresh = advisor.filterNew(extracted.tasks || [], doneSet).slice(0, maxTasks);
+      if (extracted.summary) send({ type: 'thinking', text: 'Advice: ' + extracted.summary });
+
+      if (!fresh.length) {
+        const m = extracted.tasks && extracted.tasks.length
+          ? "Nothing new to do — I've already handled what it's advising."
+          : "No concrete action items in the current advice yet.";
+        advisor.logProgress(memory.vaultPath(), { summary: extracted.summary, results: [] });
+        send({ type: 'done', message: m });
+        send({ type: 'finished', status: 'done', message: m });
+        return { status: 'done', message: m, did: 0 };
+      }
+
+      // 3) DO each task with the full agent (persistent + reports back).
+      send({ type: 'thinking', text: `Doing ${fresh.length} thing(s):\n` + fresh.map((t, i) => `${i + 1}. ${t.task}`).join('\n') });
+      const results = [];
+      for (let i = 0; i < fresh.length; i++) {
+        if (sessionAbort) break;
+        const task = fresh[i];
+        send({ type: 'step-started', index: i, total: fresh.length, label: task.task });
+        let res;
+        try {
+          res = await runSingleSession(null, task.task, send);
+        } catch (e) {
+          res = { status: 'error', message: e.message };
+        }
+        const detail = (res.message || '').replace(/\bDONE\b/, '').trim().slice(0, 200);
+        results.push({ task: task.task, status: res.status, detail });
+        send({ type: 'step-finished', index: i, status: res.status, label: task.task + (detail ? ' — ' + detail.slice(0, 120) : '') });
+        memory.logTurn('assistant', `(advisor did: ${task.task}) [${res.status}] ${detail}`, 'widget');
+      }
+
+      // 4) REMEMBER + REPORT progress.
+      advisor.saveDone(memory.vaultPath(), doneSet);
+      const notePath = advisor.logProgress(memory.vaultPath(), { summary: extracted.summary, results });
+      const doneCount = results.filter((r) => r.status === 'done').length;
+      const report =
+        `From ${source}: ${extracted.summary || 'advice'}. ` +
+        `I acted on ${results.length} item(s)` +
+        (doneCount < results.length ? ` (${doneCount} completed)` : '') +
+        '. ' + results.map((r) => `• ${r.task}${r.detail ? ' → ' + r.detail : ''}`).join(' ');
+      telemetry.record({ kind: 'advisor', goal: source, status: sessionAbort ? 'aborted' : 'done', steps: results.length, durationMs: Date.now() - t0 });
+      send({ type: 'done', message: report.slice(0, 600) });
+      send({ type: 'finished', status: sessionAbort ? 'aborted' : 'done', message: report.slice(0, 600) });
+      return { status: 'done', did: results.length, report, notePath };
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
+      return { status: 'error', message: err.message };
+    } finally {
+      sessionRunning = false;
+    }
+  });
 
   // What has watching taught him? The interface-playbook summary.
   ipcMain.handle('learning:summary', async () => {

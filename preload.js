@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('assistant', {
     clear: () => ipcRenderer.invoke('schedule:clear'),
   },
   learningSummary: () => ipcRenderer.invoke('learning:summary'),
+  advisorCycle: (payload) => ipcRenderer.invoke('advisor:cycle', payload),
   onScheduleFire: (cb) => ipcRenderer.on('schedule:fire', (_e, job) => cb(job)),
   harvest: (allTabs) => ipcRenderer.invoke('webpage:harvest', allTabs),
   crawl: (opts) => ipcRenderer.invoke('webpage:crawl', opts),
