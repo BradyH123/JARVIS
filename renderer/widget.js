@@ -530,6 +530,14 @@ async function runCommand(text) {
       return;
     }
   }
+  // Instant "organize/arrange/tile my windows", "clean up my screen", "line up
+  // my windows", "fix my window layout" — tile everything so all tabs show.
+  if (api.arrangeWindows && /^\s*(organi[sz]e|arrange|tile|line up|clean up|fix|sort out|tidy)\b.*\b(windows?|screen|tabs?|layout|desktop)\b|^\s*(organi[sz]e|arrange|tile)\s+my\b|i can'?t see (all )?(my )?(the )?(tabs?|windows?)/i.test(text)) {
+    log('info', '🪟 Organizing your windows…');
+    say('Organizing your windows so I can see everything.', { interrupt: true });
+    await api.arrangeWindows();
+    return;
+  }
   // Prompt the Claude Code app directly: "prompt claude code: …", "tell claude
   // code to …", "in claude code, …", "ask claude to …".
   const ccM = /^\s*(?:prompt|tell|ask|in)\s+claude(?:\s+code)?[,:]?\s*(?:to\s+)?(.+)/i.exec(text);
@@ -614,6 +622,10 @@ async function runCommand(text) {
       say('Opening your Claude Code session and typing the request in.', { interrupt: true });
       await api.improve.viaScreen(routed.request);
       log('info', 'Sent. When Claude Code finishes, say "upload yourself" then "reload yourself".');
+    } else if (routed.action === 'organize_windows') {
+      log('info', '🪟 Organizing your windows…');
+      say('Organizing your windows so I can see everything.', { interrupt: true });
+      await api.arrangeWindows();
     } else if (routed.action === 'set_autonomy') {
       await api.settings.update({ fullControl: routed.enabled });
       const msg = routed.enabled

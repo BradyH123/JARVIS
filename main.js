@@ -45,6 +45,7 @@ const terminal = require('./lib/shell');
 const webpage = require('./lib/webpage');
 const crawler = require('./lib/crawler');
 const axtree = require('./lib/axtree');
+const windows = require('./lib/windows');
 const claudeapp = require('./lib/claudeapp');
 const transcribe = require('./lib/transcribe');
 const telemetry = require('./lib/telemetry');
@@ -336,10 +337,14 @@ async function captureSized() {
   // Primary display first if we can identify it, else the first source.
   const source =
     sources.find((s) => String(s.display_id) === String(primary.id)) || sources[0];
-  const size = source.thumbnail.getSize();
   const jpeg = source.thumbnail.toJPEG(72); // 72% quality: small, still legible
   const dataUrl = 'data:image/jpeg;base64,' + jpeg.toString('base64');
-  return { dataUrl, width: size.width, height: size.height };
+  // Report the display's LOGICAL size (points), NOT the downscaled thumbnail's
+  // pixel size. This is the coordinate space nut.js actually moves the mouse in
+  // on macOS/Retina — the agent scales the model's click coordinates back into
+  // it, so clicks must land in points, not thumbnail pixels. Returning thumbnail
+  // pixels here compresses every click toward the top-left (missed targets).
+  return { dataUrl, width, height };
 }
 
 async function captureFrame() {
@@ -584,6 +589,44 @@ function registerIpc() {
     return { status: 'fallback', message: result.error };
   });
 
+  // How wide a lane to keep clear on the right for JARVIS's own orb — the width
+  // of the widget plus a margin, measured from its live position so tiled
+  // windows never end up hidden behind it.
+  function reservedLaneWidth() {
+    try {
+      const wa = screen.getPrimaryDisplay().workArea;
+      if (widgetWindow && !widgetWindow.isDestroyed()) {
+        const [wx] = widgetWindow.getPosition();
+        const [ww] = widgetWindow.getSize();
+        // Only reserve when the orb is docked toward the right edge.
+        if (wx + ww > wa.x + wa.width - 40) return Math.max(150, wa.x + wa.width - wx + 16);
+      }
+    } catch (_) {}
+    return 150;
+  }
+
+  // Organize the user's windows into a non-overlapping grid so JARVIS can see
+  // every open tab/window — reserving a lane for his own orb.
+  ipcMain.handle('windows:arrange', async () => {
+    const send = (evt) => broadcast('agent:event', evt);
+    send({ type: 'started', goal: 'Organizing your windows' });
+    const wa = screen.getPrimaryDisplay().workArea;
+    const t0 = Date.now();
+    const res = await windows.arrange(wa, { reserveRight: reservedLaneWidth() });
+    telemetry.record({ kind: 'windows', goal: 'arrange', status: res.ok ? 'done' : 'error', error: res.ok ? undefined : res.error, durationMs: Date.now() - t0 });
+    const msg = res.ok ? res.text : res.error || "I couldn't organize the windows.";
+    memory.logTurn('assistant', `(windows) ${msg}`, 'widget');
+    send({ type: res.ok ? 'done' : 'error', message: msg });
+    send({ type: 'finished', status: res.ok ? 'done' : 'error', message: msg });
+    return { status: res.ok ? 'done' : 'error', message: msg };
+  });
+
+  // List every visible window (app, title, bounds) — screenshot-free awareness.
+  ipcMain.handle('windows:list', async () => {
+    const res = await windows.list();
+    return res;
+  });
+
   // Ask the user to approve something mid-run (reuses the confirm gate).
   const askConfirm = (send, summary, risk) =>
     new Promise((resolve) => {
@@ -669,6 +712,10 @@ function registerIpc() {
             } else {
               r = ax.ok ? `no "${a.label}" element found` : ax.error;
             }
+          } else if (cap === 'organize_windows') {
+            const wa = screen.getPrimaryDisplay().workArea;
+            const w = await windows.arrange(wa, { reserveRight: reservedLaneWidth() });
+            r = w.ok ? w.text : w.error || 'failed';
           } else if (cap === 'computer') {
             const res = await runSingleSession(null, a.goal || g, send);
             r = res.status;

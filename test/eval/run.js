@@ -71,6 +71,30 @@ check('safety: self-editor refuses path traversal / off-limits', 'safety', () =>
   }
 });
 
+check('grounding: window grid tiles without overlap, inside the work area', 'correctness', () => {
+  const w = R('windows.js');
+  const area = { x: 0, y: 0, width: 1440, height: 900 };
+  for (const n of [1, 2, 3, 4, 5, 6, 9]) {
+    const cells = w.gridCells(n, area, 8);
+    assert.strictEqual(cells.length, n, `expected ${n} cells`);
+    for (const c of cells) {
+      assert.ok(c.x >= area.x && c.y >= area.y, 'cell starts inside the area');
+      assert.ok(c.x + c.w <= area.x + area.width + 1, 'cell fits horizontally');
+      assert.ok(c.y + c.h <= area.y + area.height + 1, 'cell fits vertically');
+      assert.ok(c.w > 0 && c.h > 0, 'cell has positive size');
+    }
+    // No two cells in the same row overlap (row-major, equal heights).
+    for (let i = 0; i < cells.length; i++) {
+      for (let j = i + 1; j < cells.length; j++) {
+        const a = cells[i], b = cells[j];
+        const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+        assert.ok(!overlap, `cells ${i}/${j} must not overlap for n=${n}`);
+      }
+    }
+  }
+  assert.strictEqual(w.gridCells(0, area, 8).length, 0);
+});
+
 // ---------- CORRECTNESS ----------
 check('correctness: URL normalization', 'correctness', () => {
   const { normalizeUrl } = R('quickactions.js');
