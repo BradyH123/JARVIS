@@ -1294,6 +1294,12 @@ function registerIpc() {
     ...config.snapshot(),
     canControl: executor.isAvailable(),
     canSelfImprove: claudecode.isAvailable(),
+    // On macOS, mouse/keyboard control needs Accessibility permission (false
+    // here = clicks/keys are silently ignored). We check without re-prompting.
+    axTrusted:
+      process.platform === 'darwin' && systemPreferences.isTrustedAccessibilityClient
+        ? systemPreferences.isTrustedAccessibilityClient(false)
+        : true,
     platform: process.platform,
     isWayland:
       process.platform === 'linux' &&
@@ -1415,6 +1421,18 @@ app.whenReady().then(() => {
   // but it makes the OS prompt appear instead of a silent 'not-allowed').
   if (process.platform === 'darwin' && systemPreferences.askForMediaAccess) {
     systemPreferences.askForMediaAccess('microphone').catch(() => {});
+  }
+  // CRITICAL for clicking/typing: nut.js mouse & keyboard events are SILENTLY
+  // ignored by macOS unless the app has Accessibility permission. Prompt for it
+  // up front (passing true opens the System Settings prompt if not yet granted),
+  // so the agent's clicks actually land instead of doing nothing.
+  if (process.platform === 'darwin' && systemPreferences.isTrustedAccessibilityClient) {
+    try {
+      const trusted = systemPreferences.isTrustedAccessibilityClient(true);
+      if (!trusted) console.warn('Accessibility permission not yet granted — mouse/keyboard control will not work until you enable JARVIS in System Settings → Privacy & Security → Accessibility.');
+    } catch {
+      /* ignore */
+    }
   }
   registerIpc();
   createTray(); // menu-bar safety net — the widget can always be brought back
