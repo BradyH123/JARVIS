@@ -471,6 +471,39 @@ check('core: task engine drains one-at-a-time, preempts, schedules, honors infin
   assert.strictEqual(eng3.list().scheduled.length, 1, 'never-ending task still scheduled after firing');
 });
 
+check('apprentice: lessons capture + thin frames; gap ledger dedupes and prioritizes', 'correctness', () => {
+  const app = R('apprentice.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-app-'));
+  app.init(dir);
+
+  // Lesson lifecycle: begin → frames stream in → finish returns them.
+  assert.strictEqual(app.isActive(), false);
+  app.begin('how to sidechain', 'Ableton Live');
+  assert.ok(app.isActive() && app.status().app === 'Ableton Live');
+  // Feed far more than the cap; it must self-thin to <= MAX and stay spread.
+  for (let i = 0; i < 200; i++) app.noteFrame('data:image/jpeg;base64,frame' + i);
+  assert.ok(app.status().frames <= app.MAX_LESSON_FRAMES, 'frames thinned to the cap');
+  const done = app.finish();
+  assert.ok(done.ok && done.app === 'Ableton Live' && done.frames.length > 0);
+  assert.strictEqual(app.isActive(), false, 'lesson ends on finish');
+
+  // Gap ledger: dedupe by app+want, count repeats, prioritize the frequent one.
+  app.recordGap('Ableton Live', 'sidechain a compressor');
+  app.recordGap('Ableton Live', 'sidechain a compressor'); // repeat → count 2
+  app.recordGap('Gmail', 'schedule a send');
+  const gaps = app.listGaps();
+  assert.strictEqual(gaps.length, 2, 'deduped to two distinct gaps');
+  assert.strictEqual(gaps[0].want, 'sidechain a compressor', 'most-hit gap ranks first');
+  assert.strictEqual(gaps[0].count, 2);
+  const q = app.nextQuestion();
+  assert.ok(q && /sidechain a compressor/.test(q.ask) && /Ableton Live/.test(q.ask), 'asks to be taught the top gap');
+  // Resolving a gap removes it from the open list, and it survives a re-init.
+  app.resolveGap(gaps[0].id);
+  assert.strictEqual(app.listGaps().length, 1, 'resolved gap drops off');
+  app.init(dir);
+  assert.strictEqual(app.listGaps().length, 1, 'gaps persist across restart');
+});
+
 // ---------- CORRECTNESS ----------
 check('correctness: URL normalization', 'correctness', () => {
   const { normalizeUrl } = R('quickactions.js');

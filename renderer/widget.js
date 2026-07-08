@@ -554,6 +554,48 @@ async function runCommand(text) {
     await api.improve.optimize();
     return;
   }
+  // "What do you still need to learn / what can't you do yet?" — JARVIS surfaces
+  // the apps/tasks he's failed at and asks to be shown.
+  if (api.lesson && /what (do you (still )?need to learn|can'?t you (do|use)( yet)?|don'?t you know)|what (should|can) i (teach|show) you|any(thing)? (i can|to) teach/i.test(text)) {
+    const g = await api.lesson.gaps();
+    if (!g.gaps || !g.gaps.length) {
+      log('info', "Nothing I'm stuck on right now.");
+      say("Nothing I'm stuck on right now. If I hit something I can't do, I'll ask you to show me.");
+    } else {
+      log('info', `📖 ${g.gaps.length} thing(s) I'd like you to teach me:`);
+      g.gaps.slice(0, 6).forEach((x) => log('think', `• ${x.want}${x.app ? ' in ' + x.app : ''}${x.count > 1 ? ` (hit ${x.count}×)` : ''}`));
+      say(g.next ? g.next.ask : `There are ${g.gaps.length} things I'd like you to show me.`, { interrupt: true });
+    }
+    setState('idle');
+    return;
+  }
+  // Teach JARVIS an app by demonstration. "let me show you how to X", "teach
+  // you to X", "watch me do X" starts a lesson; "done teaching" / "that's how"
+  // ends it and he distills what he saw.
+  if (api.lesson && /^\s*(i'?m )?(done|finished|stop)\s+(teaching|showing|the (lesson|demo))\b|^\s*(that'?s (how|it)|got it\?|end (the )?lesson)\s*$/i.test(text)) {
+    if (!(await api.lesson.status()).active) {
+      log('info', "No lesson is running.");
+      say("I'm not in a lesson right now.");
+      setState('idle');
+      return;
+    }
+    log('info', '📖 Studying what you showed me…');
+    say('Let me study what you showed me.', { interrupt: true });
+    await api.lesson.finish();
+    return;
+  }
+  if (api.lesson && /^\s*(let me |i'?ll |i will )?(show|teach)\s+(you|jarvis)\b(.*)|^\s*teach yourself\b(.*)|^\s*watch me (do|use|while i)\b(.*)/i.test(text)) {
+    // Pull the topic ("…how to sidechain in Ableton") and app if named.
+    const q = text.replace(/^\s*(let me |i'?ll |i will )?(show|teach)\s+(you|jarvis)\s*(how to |to )?/i, '')
+                  .replace(/^\s*watch me (do|use|while i)\s*/i, '')
+                  .replace(/^\s*teach yourself\s*(how to |to )?/i, '').trim();
+    const am = /\bin ([A-Z][\w .-]+)$/.exec(q);
+    const app = am ? am[1].trim() : '';
+    log('info', '📖 Lesson started — show me, then say "done teaching".');
+    say('Watching closely. Show me' + (app ? ' in ' + app : '') + ', then say done teaching.', { interrupt: true });
+    await api.lesson.start({ question: q || 'how this app is used', app });
+    return;
+  }
   // Persistent always-on watching: explicit phrases, or bare "watch me"-style
   // commands with nothing after them. "Watch me do this" (a one-shot demo)
   // falls through to the session-only observe handler below.

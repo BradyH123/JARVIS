@@ -55,6 +55,13 @@ contextBridge.exposeInMainWorld('assistant', {
     fromAdvice: (payload) => ipcRenderer.invoke('schedule:from-advice', payload),
   },
   learningSummary: () => ipcRenderer.invoke('learning:summary'),
+  lesson: {
+    start: (payload) => ipcRenderer.invoke('lesson:start', payload),
+    finish: () => ipcRenderer.invoke('lesson:finish'),
+    cancel: () => ipcRenderer.invoke('lesson:cancel'),
+    status: () => ipcRenderer.invoke('lesson:status'),
+    gaps: () => ipcRenderer.invoke('lesson:gaps'),
+  },
   advisorCycle: (payload) => ipcRenderer.invoke('advisor:cycle', payload),
   diagnose: () => ipcRenderer.invoke('diagnose:run'),
   onScheduleFire: (cb) => ipcRenderer.on('schedule:fire', (_e, job) => cb(job)),

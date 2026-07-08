@@ -52,6 +52,7 @@ const scheduler = require('./lib/scheduler');
 const learning = require('./lib/learning');
 const selfmodel = require('./lib/selfmodel');
 const advisor = require('./lib/advisor');
+const apprentice = require('./lib/apprentice');
 const diagnose = require('./lib/diagnose');
 const frontmost = require('./lib/frontmost');
 
@@ -228,7 +229,7 @@ async function runSingleSession(skill, goal, send) {
   } catch {
     /* the playbook is a bonus, never a blocker */
   }
-  return agent.runSession({
+  const sessionResult = await agent.runSession({
     goal: objective,
     skill,
     knowledge,
@@ -245,6 +246,18 @@ async function runSingleSession(skill, goal, send) {
         send({ type: 'confirm-request', id, summary, risk });
       }),
   });
+  // Failure-driven learning: when a run fails or stalls, remember the GAP —
+  // "I couldn't do X in Y" — so JARVIS can ask the user for a lesson later.
+  try {
+    if (sessionResult && (sessionResult.status === 'error' || sessionResult.status === 'max_steps')) {
+      const front = await frontmost.frontmostApp().catch(() => '');
+      const app = front && !frontmost.isSelf(front) ? front : '';
+      apprentice.recordGap(app, objective.slice(0, 140));
+    }
+  } catch {
+    /* gap ledger is a bonus */
+  }
+  return sessionResult;
 }
 
 function nowIso() {
@@ -907,8 +920,6 @@ function registerIpc() {
     }
   });
 
-  // Self-diagnosis: read my telemetry + conversation logs and report where I
-  // struggle most — data-driven, from this machine's real history.
   ipcMain.handle('diagnose:run', async () => {
     const a = diagnose.analyze({
       telemetry: telemetry.summary(),
@@ -916,6 +927,85 @@ function registerIpc() {
     });
     return { ...a, text: diagnose.report(a) };
   });
+
+  // --- Apprentice: learning external apps by demonstration ---
+  // Start a lesson: the user is about to show JARVIS how to do something. He
+  // turns on watching and captures the demonstration frames.
+  ipcMain.handle('lesson:start', async (_e, payload) => {
+    const question = (payload && payload.question) || '';
+    const app = (payload && payload.app) || '';
+    if (watch && !watch.status().active) watch.start();
+    const r = apprentice.begin(question, app);
+    broadcast('agent:event', { type: 'started', goal: `📖 Learning: ${r.question}${r.app ? ' in ' + r.app : ''}` });
+    broadcast('agent:event', { type: 'thinking', text: `Watching closely — show me${r.app ? ' in ' + r.app : ''}, then say "done teaching".` });
+    return r;
+  });
+  ipcMain.handle('lesson:status', async () => apprentice.status());
+  ipcMain.handle('lesson:cancel', async () => {
+    const r = apprentice.cancel();
+    broadcast('agent:event', { type: 'finished', status: 'aborted', message: 'Lesson cancelled.' });
+    return r;
+  });
+  // Finish a lesson: distill the frames into playbook patterns + workflow, and
+  // save a reusable skill if it's a repeatable technique.
+  ipcMain.handle('lesson:finish', async () => {
+    const send = (evt) => broadcast('agent:event', evt);
+    const done = apprentice.finish();
+    if (!done.ok) return done;
+    if (!done.frames.length) {
+      send({ type: 'finished', status: 'error', message: "I didn't capture anything — make sure watching was on." });
+      return { ok: false, error: 'No frames captured.' };
+    }
+    send({ type: 'thinking', text: 'Studying what you showed me…' });
+    try {
+      const l = await claude.distillLesson(done.frames, done.question, done.app);
+      if (!l.ok) {
+        send({ type: 'finished', status: 'error', message: l.error });
+        return l;
+      }
+      const app = l.app || done.app || 'General';
+      // 1) Record into the interface playbook (patterns + the workflow line).
+      const rec = learning.record({ app, task: done.question, patterns: l.patterns, workflow: l.workflow });
+      // 2) Save a reusable skill when it's a repeatable technique.
+      let skill = null;
+      if (l.skill_worthy && Array.isArray(l.workflow) && l.workflow.length && store) {
+        skill = store.add({
+          id: crypto.randomUUID(),
+          name: (l.skill_name || done.question).slice(0, 80),
+          description: l.summary || done.question,
+          steps: l.workflow,
+          app_context: app,
+          trigger_phrases: [],
+          note: 'Learned by demonstration',
+          created_at: nowIso(),
+          frames: [],
+        });
+      }
+      // Close any matching gap — he just learned a thing he couldn't do.
+      for (const g of apprentice.listGaps()) {
+        if (done.question.toLowerCase().includes(g.want.toLowerCase().slice(0, 30)) || (g.app && g.app === app)) {
+          apprentice.resolveGap(g.id);
+          break;
+        }
+      }
+      memory.logTurn('assistant', `(learned by demonstration) ${app}: ${l.summary}`, 'widget');
+      telemetry.record({ kind: 'lesson', goal: `${app}: ${done.question}`, status: 'done', durationMs: done.durationMs });
+      const msg =
+        `Got it — learned ${l.workflow.length} step(s) for "${done.question}"${app ? ' in ' + app : ''}. ` +
+        `Added ${rec.added} pattern(s) to my ${app} playbook` +
+        (skill ? `, and saved it as the skill "${skill.name}".` : '.') +
+        (l.unclear ? ` One thing though: ${l.unclear}` : '');
+      send({ type: 'done', message: msg });
+      send({ type: 'finished', status: 'done', message: msg });
+      return { ok: true, app, added: rec.added, skill, unclear: l.unclear || '' };
+    } catch (err) {
+      send({ type: 'error', message: err.message });
+      send({ type: 'finished', status: 'error', message: err.message });
+      return { ok: false, error: err.message };
+    }
+  });
+  // What JARVIS knows he can't do yet + the demonstration he most wants.
+  ipcMain.handle('lesson:gaps', async () => ({ gaps: apprentice.listGaps(), next: apprentice.nextQuestion() }));
 
   // What has watching taught him? The interface-playbook summary.
   ipcMain.handle('learning:summary', async () => {
@@ -1916,6 +2006,7 @@ app.whenReady().then(() => {
   }
   memory.init(vaultDir);
   learning.init(path.join(vaultDir, 'Learning')); // interface playbook lives in the vault
+  apprentice.init(vaultDir); // lesson system + the "what I can't do yet" gap ledger
   selfmodel.init(vaultDir);
   memory.refreshHome(); // the vault's index self-organizes at every startup
   refreshSelfModel();
@@ -1936,7 +2027,11 @@ app.whenReady().then(() => {
     capture: captureSized,
     intervalMs: config.getWatchIntervalMs(),
     maxFrames: config.getWatchMaxFrames(),
-    onTick: (status) => broadcast('watch:event', status),
+    onTick: (status) => {
+      // While the user is teaching a lesson, every fresh frame feeds it.
+      if (apprentice.isActive() && status.latest) apprentice.noteFrame(status.latest);
+      broadcast('watch:event', status);
+    },
   });
   // Ask macOS for microphone access up front so the voice button's permission
   // path works (this does NOT fix Electron's lack of a speech-to-text backend,
