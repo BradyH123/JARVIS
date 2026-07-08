@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JARVIS</title>
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <div class="apphead"><div class="ahin">
+      <span class="orbmini"></span><b>JARVIS</b>
+      <span class="tabs">
+        <button class="tab on" data-page="live">● Live</button>
+        <button class="tab" data-page="flows">🚇 Workflows</button>
+      </span>
+      <span class="right">
+        <button class="gear" id="open-settings" title="API key, voice & app settings">⚙</button>
+      </span>
+    </div></div>
+
+    <div class="page on" id="page-live">
+      <div class="live">
+        <div class="lpanel">
+          <div class="orbwrap">
+            <canvas id="orb" width="340" height="340"></canvas>
+            <div class="orbstate"><b id="orb-word">Standing by</b><span id="orb-sub">idle</span></div>
+          </div>
+          <div class="goalcard">
+            <div class="k"><i></i>Main goal</div>
+            <div class="g" id="goal-g">Nothing running</div>
+            <div class="s" id="goal-s">tell JARVIS what to do below</div>
+          </div>
+        </div>
+        <div class="lpanel feedpanel">
+          <h3>Live activity <span id="feed-clock"></span></h3>
+          <div class="feed" id="feed"></div>
+        </div>
+        <div class="nextbar">
+          <span class="nk">Next up</span>
+          <div class="nchips" id="nchips"></div>
+          <span class="ncount" id="ncount"></span>
+        </div>
+        <div class="composer">
+          <input id="live-cmd" placeholder="Tell JARVIS what to do — this also edits workflows: “move the news run to 7am”…" />
+          <button class="send" id="live-send">➤</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-flows">
+      <div class="chatedit">
+        <div class="box"><span>💬</span>
+          <input id="flow-cmd" placeholder='Edit conversationally — “make the news strategy 90 days”, “change the Polsia instructions to focus on marketing”…' />
+          <button class="send" id="flow-send">➤</button>
+        </div>
+        <div class="hint">Every run below is a node — scroll the full timeline. Tap any node to see <b>the exact instructions JARVIS will read at that moment</b>, edit them inline, and see past results.</div>
+      </div>
+      <div class="emptywins" id="emptywins" hidden>
+        <b>No workflows yet.</b><br />Tell JARVIS something like “every day at 8am read the news and build reports for 2 months” — each schedule becomes its own line here.
+      </div>
+      <div class="wins" id="wins"></div>
+    </div>
+
+    <script src="dashboard.js"></script>
+  </body>
+</html>

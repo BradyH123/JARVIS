@@ -54,7 +54,13 @@ contextBridge.exposeInMainWorld('assistant', {
     clear: () => ipcRenderer.invoke('schedule:clear'),
     fromAdvice: (payload) => ipcRenderer.invoke('schedule:from-advice', payload),
     strategy: (payload) => ipcRenderer.invoke('strategy:create', payload),
+    update: (payload) => ipcRenderer.invoke('schedule:update', payload),
+    runNow: (id) => ipcRenderer.invoke('schedule:run-now', id),
+    report: (payload) => ipcRenderer.invoke('schedule:report', payload),
   },
+  // Dashboard → widget: hand text to the widget's full command pipeline.
+  relayCommand: (text) => ipcRenderer.invoke('assistant:relay', text),
+  onRelayedCommand: (cb) => ipcRenderer.on('widget:command', (_e, text) => cb(text)),
   learningSummary: () => ipcRenderer.invoke('learning:summary'),
   lesson: {
     start: (payload) => ipcRenderer.invoke('lesson:start', payload),
@@ -136,6 +142,7 @@ contextBridge.exposeInMainWorld('assistant', {
 
   // Widget ↔ dashboard window controls.
   openDashboard: (tab) => ipcRenderer.invoke('window:open-dashboard', tab),
+  openSettings: () => ipcRenderer.invoke('window:open-settings'),
   openActivity: () => ipcRenderer.invoke('window:open-activity'),
   expandWidget: (expanded) => ipcRenderer.invoke('widget:expand', expanded),
   onWidgetExpanded: (cb) => ipcRenderer.on('widget:expanded', (_e, v) => cb(v)),

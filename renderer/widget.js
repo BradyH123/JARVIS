@@ -1108,7 +1108,14 @@ document.getElementById('wx-deny').addEventListener('click', async () => {
 });
 
 /* ---------- agent event stream ---------- */
+// The most recent task outcome — how scheduled runs report their result back
+// to the scheduler so workflow nodes can show past results.
+let lastOutcome = null;
+
 api.onAgentEvent((evt) => {
+  if (evt.type === 'done') lastOutcome = { ok: true, message: evt.message || 'Done.' };
+  else if (evt.type === 'error') lastOutcome = { ok: false, message: evt.message || 'Error' };
+  else if (evt.type === 'finished') lastOutcome = { ok: evt.status !== 'error', message: evt.message || (lastOutcome && lastOutcome.message) || evt.status };
   switch (evt.type) {
     case 'started':
       clearFeed();
@@ -1300,8 +1307,21 @@ if (api.onScheduleFire) {
   api.onScheduleFire((job) => {
     log('info', '⏰ Scheduled task fired: ' + (job.text || job.command));
     say('Time for your scheduled task.', { interrupt: true });
-    runCommand(job.command);
+    lastOutcome = null;
+    Promise.resolve(runCommand(job.command))
+      .then(() => {
+        const o = lastOutcome || {};
+        if (api.schedule && api.schedule.report) api.schedule.report({ id: job.id, ok: o.ok !== false, summary: o.message || 'ran' });
+      })
+      .catch((e) => {
+        if (api.schedule && api.schedule.report) api.schedule.report({ id: job.id, ok: false, summary: e.message });
+      });
   });
+}
+
+// Text relayed from the dashboard's composer — handled exactly like typed input.
+if (api.onRelayedCommand) {
+  api.onRelayedCommand((text) => runCommand(text));
 }
 
 setState('idle');

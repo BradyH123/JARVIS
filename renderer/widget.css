@@ -2,16 +2,17 @@
    so the body is transparent and only the panel is visible over the desktop. */
 
 :root {
-  --idle: #3aa0ff;
+  --idle: #4ab4ff;
+  --idle-2: #8fe3ff;
   --listen: #22d3ee;
-  --run: #ffb020;
-  --approve: #ff5c5c;
-  --done: #4bd18a;
+  --run: #ffbb5c;
+  --approve: #ff5f6e;
+  --done: #3ad98a;
   --accent: var(--idle);
-  --panel: rgba(14, 18, 28, 0.86);
-  --panel-edge: rgba(120, 170, 255, 0.22);
-  --text: #e8edf6;
-  --muted: #8ea0bd;
+  --panel: rgba(13, 21, 36, 0.94);
+  --panel-edge: rgba(110, 145, 195, 0.30);
+  --text: #e8eefb;
+  --muted: #8799b8;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -30,7 +31,7 @@ html, body {
   margin: 8px auto;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
+  background: linear-gradient(180deg, rgba(13, 21, 36, 0.94), rgba(9, 15, 27, 0.96));
   border: 1px solid var(--panel-edge);
   border-radius: 22px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55),
@@ -94,10 +95,21 @@ html, body {
   min-height: 14px;
 }
 
-/* live activity feed */
+/* The approved layout: orb → text box → live actions tab. The DOM keeps its
+   original order; flex `order` arranges it. */
+.wx-header { order: 0; }
+.wx-core { order: 1; }
+.wx-state { order: 2; }
+.wx-sub { order: 3; }
+.wx-confirm { order: 4; }
+.wx-input { order: 5; }
+.wx-feed { order: 6; }
+.wx-foot { order: 7; }
+
+/* live actions feed (sits under the text box, like the floater's tab) */
 .wx-feed {
   flex: 1;
-  margin: 0 12px;
+  margin: 8px 12px 0;
   padding: 8px 10px;
   background: rgba(0, 0, 0, 0.28);
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -109,6 +121,15 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+.wx-feed::before {
+  content: '● LIVE ACTIONS';
+  display: block;
+  font-size: 8.5px;
+  letter-spacing: 0.14em;
+  font-weight: 800;
+  color: var(--muted);
+  padding-bottom: 4px;
 }
 .wx-feed::-webkit-scrollbar { width: 6px; }
 .wx-feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }

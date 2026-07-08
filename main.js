@@ -76,6 +76,7 @@ async function runStrategy(job) {
     ).catch((e) => ({ status: 'error', message: e.message }));
     const content = (read && read.message) || '';
     if (!content || content.length < 20) {
+      scheduler.recordResult(job.id, { ok: false, summary: `Couldn't read ${m.source} this time.` });
       send({ type: 'finished', status: 'error', message: `Couldn't read ${m.source} this time.` });
       return;
     }
@@ -86,6 +87,7 @@ async function runStrategy(job) {
       alreadyDone: strategyMemory[job.id],
     });
     if (!derived.tasks.length) {
+      scheduler.recordResult(job.id, { ok: true, summary: `Read ${m.source}: nothing new worth a task today.` });
       send({ type: 'done', message: `Read ${m.source}: nothing new worth a task today.` });
       send({ type: 'finished', status: 'done' });
       return;
@@ -106,9 +108,11 @@ async function runStrategy(job) {
     const msg = `Strategy on ${m.source}: ${derived.summary} Scheduled ${queued} follow-up task(s).`;
     memory.logTurn('assistant', `(strategy ran) ${msg}`, 'widget');
     telemetry.record({ kind: 'strategy', goal: m.source, status: 'done', steps: queued, durationMs: 0 });
+    scheduler.recordResult(job.id, { ok: true, summary: msg });
     send({ type: 'done', message: msg });
     send({ type: 'finished', status: 'done', message: msg });
   } catch (err) {
+    scheduler.recordResult(job.id, { ok: false, summary: err.message });
     send({ type: 'finished', status: 'error', message: err.message });
   }
 }
@@ -337,8 +341,8 @@ function createWindow(show) {
     height: 760,
     minWidth: 820,
     minHeight: 560,
-    title: 'Screen Assistant',
-    backgroundColor: '#0f1115',
+    title: 'JARVIS',
+    backgroundColor: '#05070d',
     show: Boolean(show),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -347,12 +351,41 @@ function createWindow(show) {
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // The approved two-page dashboard: ● Live + 🚇 Workflows.
+  mainWindow.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'));
 
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
   return mainWindow;
+}
+
+// The legacy workspace (skills, settings, onboarding wizard) lives on as the
+// settings window — the dashboard's ⚙ opens it, and first run (no API key)
+// starts here so onboarding is visible.
+let settingsWindow = null;
+function createSettingsWindow(show) {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (show) settingsWindow.show();
+    return settingsWindow;
+  }
+  settingsWindow = new BrowserWindow({
+    width: 1100,
+    height: 760,
+    minWidth: 820,
+    minHeight: 560,
+    title: 'JARVIS — Settings',
+    backgroundColor: '#0f1115',
+    show: Boolean(show),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  settingsWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  settingsWindow.on('closed', () => { settingsWindow = null; });
+  return settingsWindow;
 }
 
 const WIDGET_FULL = { width: 360, height: 520 };
@@ -461,7 +494,8 @@ function createTray() {
   tray.setToolTip('Screen Assistant');
   const menu = Menu.buildFromTemplate([
     { label: 'Show assistant', click: () => showWidget() },
-    { label: 'Open workspace', click: () => createWindow(true) },
+    { label: 'Open dashboard', click: () => createWindow(true) },
+    { label: 'Settings', click: () => createSettingsWindow(true) },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() },
   ]);
@@ -820,6 +854,31 @@ function registerIpc() {
   ipcMain.handle('schedule:list', async () => scheduler.list());
   ipcMain.handle('schedule:remove', async (_e, id) => scheduler.remove(id));
   ipcMain.handle('schedule:clear', async () => scheduler.clear());
+  // Dashboard node editing: rewrite a job's strategic instructions in place.
+  ipcMain.handle('schedule:update', async (_e, payload) => {
+    const p = payload || {};
+    const r = scheduler.update(p.id, { command: p.command });
+    if (!r.error) memory.logTurn('assistant', `(schedule edited) ${r.text}`, 'widget');
+    return r;
+  });
+  // "▶ run now" on a node — fire the job immediately, schedule untouched.
+  ipcMain.handle('schedule:run-now', async (_e, id) => scheduler.fireNow(id));
+  // The widget reports how a scheduled run went so nodes show past results.
+  ipcMain.handle('schedule:report', async (_e, payload) => {
+    const p = payload || {};
+    return scheduler.recordResult(p.id, { ok: p.ok, summary: p.summary });
+  });
+  // The dashboard's composer hands text to the widget's full command pipeline —
+  // one brain, two mouths. The widget wakes and handles it like typed input.
+  ipcMain.handle('assistant:relay', async (_e, text) => {
+    const t = String(text || '').trim();
+    if (!t) return { error: 'Nothing to send.' };
+    showWidget();
+    setTimeout(() => {
+      if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.webContents.send('widget:command', t);
+    }, 300);
+    return { ok: true };
+  });
 
   // Create a content-reactive STRATEGY: "every day for 2 months, read the news
   // and schedule tasks to look into the stories deeper and build reports". It's
@@ -2022,6 +2081,12 @@ function registerIpc() {
     if (tab) win.webContents.send('dashboard:focus-tab', tab);
     return { ok: true };
   });
+  ipcMain.handle('window:open-settings', async () => {
+    const win = createSettingsWindow(true);
+    win.show();
+    win.focus();
+    return { ok: true };
+  });
   ipcMain.handle('widget:hide', async () => {
     if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.hide();
     return { ok: true };
@@ -2136,9 +2201,10 @@ app.whenReady().then(() => {
   registerIpc();
   createTray(); // menu-bar safety net — the widget can always be brought back
   createWidget(); // the JARVIS widget is the primary, always-on surface
-  // First run (no key yet): open the workspace so the onboarding wizard is
-  // actually visible. Otherwise keep it preloaded but hidden until summoned.
-  createWindow(!config.getApiKey());
+  // First run (no key yet): open the settings/onboarding workspace so the
+  // wizard is visible. Otherwise preload the dashboard hidden until summoned.
+  createWindow(false);
+  if (!config.getApiKey()) createSettingsWindow(true);
   registerShortcuts();
 
   // If the user has accepted always-on surveillance, begin watching & learning

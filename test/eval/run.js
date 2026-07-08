@@ -254,6 +254,44 @@ check('autonomy: scheduler computes fire times, persists, and ticks correctly', 
   sched.clear();
 });
 
+check('dashboard: scheduler supports edit-in-place, run history, and run-now', 'correctness', () => {
+  const sched = R('scheduler.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-sch2-'));
+  sched.init(dir);
+  sched.clear();
+  const job = sched.add('read the news', { kind: 'daily', time: '08:00' });
+
+  // Editing a node's instructions rewrites the whole line and persists —
+  // one source of truth for every future run.
+  const up = sched.update(job.id, { command: 'read the news, focus on tech' });
+  assert.strictEqual(up.command, 'read the news, focus on tech');
+  sched.init(dir); // simulate restart
+  assert.strictEqual(sched.list()[0].command, 'read the news, focus on tech', 'edit survives restart');
+
+  // Run history: nodes show past results, newest first, capped so the file
+  // never grows unbounded.
+  for (let i = 0; i < 12; i++) sched.recordResult(job.id, { ok: i % 2 === 0, summary: 'run ' + i });
+  const j = sched.list()[0];
+  assert.ok(j.history.length <= 8, 'history capped, got ' + j.history.length);
+  assert.strictEqual(j.history[0].summary, 'run 11', 'newest result first');
+
+  // "▶ run now" fires through the registered execute without moving the
+  // regular schedule.
+  let firedCmd = null;
+  sched.startTicking((x) => { firedCmd = x.command; }, 60 * 60000);
+  const before = sched.list()[0].nextAt;
+  const r = sched.fireNow(job.id);
+  assert.ok(!r.error, 'fireNow ran');
+  assert.strictEqual(firedCmd, 'read the news, focus on tech', 'executed the real command');
+  assert.strictEqual(sched.list()[0].nextAt, before, 'nextAt untouched by run-now');
+  sched.stopTicking();
+
+  // Unknown ids fail loudly, not silently.
+  assert.ok(sched.update('nope', {}).error, 'update rejects unknown id');
+  assert.ok(sched.fireNow('nope').error, 'fireNow rejects unknown id');
+  sched.clear();
+});
+
 check('learning: playbook records, dedupes, caps, and feeds back by app', 'correctness', () => {
   const learning = R('learning.js');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-learn-'));
