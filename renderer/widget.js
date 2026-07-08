@@ -313,7 +313,13 @@ setInterval(refreshCounts, 4000);
 /* ---------- live "watching" (REC) indicator ---------- */
 const recEl = document.getElementById('wx-rec');
 if (api.onWatchEvent) {
-  api.onWatchEvent((s) => recEl.classList.toggle('hidden', !(s && s.active && !s.paused)));
+  api.onWatchEvent((s) => {
+    recEl.classList.toggle('hidden', !(s && s.active && !s.paused));
+    // Quiet studying: surface a line only when something NEW was learned.
+    if (s && s.learning && s.learned > 0) {
+      log('think', `📚 Studied ${s.app || 'your work'} — ${s.learned} new pattern${s.learned === 1 ? '' : 's'} in my playbook.`);
+    }
+  });
 }
 
 /* ---------- command routing ---------- */
@@ -494,12 +500,18 @@ async function runCommand(text) {
     await api.improve.optimize();
     return;
   }
-  if ((/^\s*(accept surveillance|always watch)\b/i.test(text)) && api.setSurveillance) {
+  // Persistent always-on watching: explicit phrases, or bare "watch me"-style
+  // commands with nothing after them. "Watch me do this" (a one-shot demo)
+  // falls through to the session-only observe handler below.
+  if (
+    (/^\s*(accept surveillance|always watch\b.*|watch\b.+\bat all times.*|keep watching)\s*[.!]?\s*$|^\s*(watch|study)\s+(me|my screen|everything|how i work)\s*[.!]?\s*$/i.test(text)) &&
+    api.setSurveillance
+  ) {
     await api.setSurveillance(true);
     renderSurveil(true);
-    say('Surveillance accepted. I am always watching and learning now.', { interrupt: true });
-    log('info', '👁 Always-on watching accepted — studying how you work every session.');
-    setState('idle', 'Watching & learning');
+    say('Always watching from now on — even after restarts — and studying how you work. Say stop watching to end it.', { interrupt: true });
+    log('info', '👁 Always-on watching (persists across restarts) — studying how you work into my interface playbook.');
+    setState('idle', 'Watching & studying');
     return;
   }
   if (/^\s*(watch|learn|study)\s+(me|how i work|my workflow|what i do)\b/i.test(text) && api.observe) {
@@ -515,6 +527,26 @@ async function runCommand(text) {
     if (typeof renderSurveil === 'function') renderSurveil(false);
     say('Stopped watching.', { interrupt: true });
     log('info', 'Stopped watch-and-learn.');
+    setState('idle');
+    return;
+  }
+  // "What have you learned (about how I work)?" — the interface playbook.
+  // Anchored to the whole utterance so content questions ("what did you learn
+  // about my meeting notes?") still reach the memory-aware router.
+  if (
+    api.learningSummary &&
+    /^\s*(what (have|did) you learn(ed)?( about (me|how i work|my (apps|workflow|habits)))?|what do you know about (how i work|my (apps|workflow|habits))|show (me )?(your |the )?playbook)\s*\??\s*$/i.test(text)
+  ) {
+    const s = await api.learningSummary();
+    if (!s.total) {
+      log('info', "Nothing in my playbook yet — turn on watching (👁) and I'll study as you work.");
+      say("I haven't studied enough yet. Turn on watching and I'll learn as you work.");
+    } else {
+      log('info', `📚 I've learned ${s.total} interface pattern${s.total === 1 ? '' : 's'} across ${s.apps.length} app${s.apps.length === 1 ? '' : 's'}:`);
+      s.apps.slice(0, 6).forEach((a) => log('think', `• ${a.app} — ${a.patterns} patterns`));
+      (s.sample || []).forEach((x) => log('think', '  e.g. ' + x));
+      say(`I've learned ${s.total} patterns across ${s.apps.length} apps, and I use them whenever I drive your computer.`);
+    }
     setState('idle');
     return;
   }
