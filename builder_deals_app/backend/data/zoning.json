@@ -1,0 +1,86 @@
+{
+  "austin_tx": {
+    "zoning_code": "SF-3",
+    "allowed_uses": ["Single Family", "Duplex", "ADU"],
+    "max_units": 2,
+    "max_height_ft": 35,
+    "max_far": 0.4,
+    "min_lot_sqft": 5750,
+    "setbacks": {"front": 25, "side": 5, "rear": 10},
+    "str_allowed": true,
+    "adu_allowed": true,
+    "notes": "Type 2 STR licenses tightly limited; verify before underwriting STR."
+  },
+  "denver_co": {
+    "zoning_code": "U-SU-C",
+    "allowed_uses": ["Single Family", "ADU"],
+    "max_units": 1,
+    "max_height_ft": 30,
+    "max_far": 0.5,
+    "min_lot_sqft": 5500,
+    "setbacks": {"front": 20, "side": 5, "rear": 12},
+    "str_allowed": true,
+    "adu_allowed": true,
+    "notes": "STR requires primary residency in Denver."
+  },
+  "phoenix_az": {
+    "zoning_code": "R1-6",
+    "allowed_uses": ["Single Family", "Guesthouse"],
+    "max_units": 1,
+    "max_height_ft": 30,
+    "max_far": 0.5,
+    "min_lot_sqft": 6000,
+    "setbacks": {"front": 20, "side": 5, "rear": 25},
+    "str_allowed": true,
+    "adu_allowed": true,
+    "notes": "Lot splits possible with frontage; check city ordinance."
+  },
+  "tampa_fl": {
+    "zoning_code": "RS-50",
+    "allowed_uses": ["Single Family", "ADU"],
+    "max_units": 1,
+    "max_height_ft": 35,
+    "max_far": 0.55,
+    "min_lot_sqft": 5000,
+    "setbacks": {"front": 20, "side": 7, "rear": 20},
+    "str_allowed": true,
+    "adu_allowed": true,
+    "notes": "STR allowed citywide; HOA may restrict."
+  },
+  "nashville_tn": {
+    "zoning_code": "RS5",
+    "allowed_uses": ["Single Family", "DADU"],
+    "max_units": 2,
+    "max_height_ft": 35,
+    "max_far": 0.6,
+    "min_lot_sqft": 5000,
+    "setbacks": {"front": 20, "side": 5, "rear": 20},
+    "str_allowed": false,
+    "adu_allowed": true,
+    "notes": "Owner-occupied STR only in residential zones."
+  },
+  "charlotte_nc": {
+    "zoning_code": "N1-A",
+    "allowed_uses": ["Single Family", "ADU", "Duplex"],
+    "max_units": 2,
+    "max_height_ft": 40,
+    "max_far": 0.6,
+    "min_lot_sqft": 5000,
+    "setbacks": {"front": 20, "side": 5, "rear": 20},
+    "str_allowed": true,
+    "adu_allowed": true,
+    "notes": "UDO adopted 2023 — many SF lots upzoned to allow duplex/triplex."
+  },
+  "_default": {
+    "zoning_code": "Unknown",
+    "allowed_uses": ["Single Family"],
+    "max_units": 1,
+    "max_height_ft": 30,
+    "max_far": 0.4,
+    "min_lot_sqft": 5000,
+    "setbacks": {"front": 20, "side": 5, "rear": 15},
+    "str_allowed": false,
+    "adu_allowed": false,
+    "notes": "No data for this jurisdiction. Verify with the municipality."
+  }
+}
