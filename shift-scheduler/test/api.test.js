@@ -202,6 +202,15 @@ test('ICS feed serves per-employee calendar', async () => {
   assert.match(body, /BEGIN:VEVENT/);
 });
 
+test('coworkers-only privacy setting defaults on and toggles', async () => {
+  const initial = await call('GET', '/api/state');
+  assert.strictEqual(initial.data.state.settings.coworkersOnly, true);
+  const off = await call('PATCH', '/api/settings', { coworkersOnly: false }, mgr);
+  assert.strictEqual(off.data.state.settings.coworkersOnly, false);
+  const on = await call('PATCH', '/api/settings', { coworkersOnly: true }, mgr);
+  assert.strictEqual(on.data.state.settings.coworkersOnly, true);
+});
+
 test('state endpoint never leaks the manager PIN', async () => {
   const res = await call('GET', '/api/state');
   assert.strictEqual(res.status, 200);

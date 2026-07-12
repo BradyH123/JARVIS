@@ -266,6 +266,20 @@ function renderSchedule(view) {
     return;
   }
 
+  // Privacy: employees only see days they work, and the coworkers on them.
+  const privacy = state.settings.coworkersOnly && !managerPin;
+  if (privacy && !me) {
+    view.append(el('div', { class: 'card' },
+      el('div', { class: 'empty' },
+        el('span', { class: 'big' }, '🗓️'),
+        el('strong', {}, 'Pick your name to see your schedule'),
+        el('p', {}, 'This schedule is private — you’ll see your own shifts and the people working alongside you.'),
+        el('button', { class: 'btn primary', onclick: () => identityModal() }, 'Choose who you are'),
+      )));
+    return;
+  }
+  const myWorkDays = privacy ? new Set(state.shifts.filter((s) => s.employeeId === me).map((s) => s.date)) : null;
+
   const start = weekStartDayNumber();
   const today = dayNumber(todayStr());
 
@@ -293,6 +307,10 @@ function renderSchedule(view) {
     }, '⧉ Copy → next week') : null,
   );
   view.append(controls);
+  if (privacy) {
+    view.append(el('p', { class: 'privacy-hint' },
+      '🔒 You see your days and who’s working with you. Days you’re off appear empty.'));
+  }
 
   const grid = el('div', { class: 'week-grid' });
   for (let i = 0; i < 7; i++) {
@@ -301,6 +319,7 @@ function renderSchedule(view) {
     let dayShifts = state.shifts
       .filter((s) => s.date === dateStr)
       .sort((a, b) => toMinutes(a.start) - toMinutes(b.start) || a.end.localeCompare(b.end));
+    if (privacy && !myWorkDays.has(dateStr)) dayShifts = [];
     if (myOnly && me) dayShifts = dayShifts.filter((s) => s.employeeId === me);
 
     const col = el('div', {
@@ -649,6 +668,11 @@ function renderManager(view) {
     onchange: () => act('PATCH', '/api/settings', { requireApproval: approvalCheck.checked },
       approvalCheck.checked ? 'Trades now need your approval' : 'Trades apply instantly now'),
   });
+  const privacyCheck = el('input', {
+    type: 'checkbox', checked: state.settings.coworkersOnly,
+    onchange: () => act('PATCH', '/api/settings', { coworkersOnly: privacyCheck.checked },
+      privacyCheck.checked ? 'Employees now only see days they work' : 'Everyone can see the full schedule now'),
+  });
   const weekSel = el('select', { onchange: () => act('PATCH', '/api/settings', { weekStart: weekSel.value }, 'Week start updated') },
     el('option', { value: 'mon', selected: state.settings.weekStart === 'mon' }, 'Monday'),
     el('option', { value: 'sun', selected: state.settings.weekStart === 'sun' }, 'Sunday'));
@@ -662,6 +686,8 @@ function renderManager(view) {
     ),
     el('label', { class: 'check-row', style: 'margin-top:8px' }, approvalCheck,
       el('span', {}, 'Require my approval for trades', el('span', { class: 'hint' }, 'Accepted trades wait for you before the schedule changes.'))),
+    el('label', { class: 'check-row' }, privacyCheck,
+      el('span', {}, 'Employees only see days they work', el('span', { class: 'hint' }, 'Each person sees their own shifts plus whoever works alongside them. You always see everything.'))),
     el('div', { class: 'inline-row', style: 'margin-top:8px' },
       pinInput,
       el('button', {

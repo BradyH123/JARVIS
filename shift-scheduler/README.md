@@ -12,7 +12,10 @@ plain HTML/JS frontend. `node server.js` is the whole deployment.
 ## What everyone can do
 
 **Employees** (no account or password — open the link, tap your name):
-- See the week's calendar with everyone's shifts; your own are highlighted
+- See the week's calendar with your shifts highlighted. By default the
+  schedule is private: you see the days you work and who's working alongside
+  you, and days you're off appear empty (the manager can switch to a
+  fully-open schedule in Settings)
 - Filter to "My shifts", flip between weeks
 - Put a shift up for trade, offer to **cover** someone's shift, or offer a
   **swap** with one of your own shifts
@@ -24,6 +27,7 @@ plain HTML/JS frontend. `node server.js` is the whole deployment.
 - Add/rename/remove employees (each gets a color)
 - Add, edit, delete shifts; tap **＋** on any day; **copy a whole week forward**
 - Optionally require manager approval before accepted trades take effect
+- Choose schedule visibility: coworkers-only (default) or everyone sees all
 - Rename the business, choose Monday/Sunday week start, change the PIN
 
 **Built-in safety rails:** you can only trade your own shifts, double-booking
@@ -90,8 +94,10 @@ connection status).
 This is deliberately lightweight, built for a small team that already trusts
 each other: employees pick their name from a list with no password (like a
 paper schedule on the wall, anyone could write on it). Only manager actions
-are protected by the PIN. If you need real logins, that's the first thing
-you'd add.
+are protected by the PIN. The coworkers-only view keeps the schedule tidy
+and courteous rather than cryptographically private — since anyone can pick
+any name, a determined coworker could still look around. If you need real
+logins, that's the first thing you'd add.
 
 ## Tests
 

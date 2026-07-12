@@ -94,6 +94,7 @@ function defaultDb() {
       managerPin: '1234',
       requireApproval: false,
       weekStart: 'mon', // 'mon' | 'sun'
+      coworkersOnly: true, // employees only see days they work (+ coworkers on them)
     },
     employees: [], // {id, name, color}
     shifts: [],    // {id, employeeId, date, start, end, note}
@@ -532,6 +533,7 @@ function createServer(options = {}) {
         if (name) db.settings.businessName = name;
       }
       if (typeof body.requireApproval === 'boolean') db.settings.requireApproval = body.requireApproval;
+      if (typeof body.coworkersOnly === 'boolean') db.settings.coworkersOnly = body.coworkersOnly;
       if (body.weekStart === 'mon' || body.weekStart === 'sun') db.settings.weekStart = body.weekStart;
       if (body.newPin !== undefined) {
         const pin = String(body.newPin).trim();
