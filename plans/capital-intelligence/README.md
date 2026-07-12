@@ -30,12 +30,31 @@ screen, with every other screen a view into the same underlying model.
 
 ## Document map
 
+**Layer 1 — direction (what and why):**
+
 | Doc | Purpose | Read when |
 |---|---|---|
 | [`01-vision-and-principles.md`](./01-vision-and-principles.md) | Mission, the 8 locked principles, positioning, users, moat, language guardrails | First; it rarely changes |
-| [`02-system-architecture.md`](./02-system-architecture.md) | The two loops, the 10-step Capital Intelligence Loop, agent roster, knowledge-graph schema, evidence/explainability model, tech stack decisions | Before writing any code |
-| [`03-phase-1-prd.md`](./03-phase-1-prd.md) | Phase 1 scope, screen-by-screen product spec, node visual language, seeded-data spec, acceptance criteria | While building each screen |
-| [`04-build-plan.md`](./04-build-plan.md) | Repo layout, milestone/sprint plan (M0–M6), definitions of done, demo script, testing strategy, risks, open questions | To run the build |
+| [`02-system-architecture.md`](./02-system-architecture.md) | The two loops, the 10-step Capital Intelligence Loop, agent roster, knowledge-graph schema overview, evidence/explainability model, tech stack decisions | Before writing any code |
+| [`03-phase-1-prd.md`](./03-phase-1-prd.md) | Phase 1 scope, screen-by-screen product spec, node visual language, acceptance criteria | While building each screen |
+| [`04-build-plan.md`](./04-build-plan.md) | Repo layout, milestone plan (M0–M6), engineering rules, demo script, testing strategy, risks | To run the build |
+
+**Layer 2 — detailed specification (exactly how; added so nothing gets
+decided implicitly mid-build):**
+
+| Doc | Purpose | Governs |
+|---|---|---|
+| [`05-knowledge-graph-spec.md`](./05-knowledge-graph-spec.md) | Full data model: node/edge envelopes and registries, versioning, the 6 invariants with error codes, influence/rollup/propagation algorithms, canonical queries | `packages/graph` |
+| [`06-agent-specs.md`](./06-agent-specs.md) | Per-agent contracts: triggers, IO schemas, prompt skeletons, guardrails, golden-set evals; debate pipeline; budget/model-tier rules | `packages/agents` |
+| [`07-data-and-seed-spec.md`](./07-data-and-seed-spec.md) | Ingestion pipeline, adapter interfaces, demo mode, and the concrete seed universe: firm, 16 clients, 4 ecosystems, 12 scripted days with expected outcomes | `packages/adapters`, `packages/seed` |
+| [`08-api-and-events-spec.md`](./08-api-and-events-spec.md) | tRPC routers/procedures, bus topics, SSE messages, authz matrix | server + `apps/web` boundary |
+| [`09-ux-design-spec.md`](./09-ux-design-spec.md) | Design tokens, chrome, keyboard map, map rendering/perf budgets, per-screen layout, states & motion rules, component inventory | `apps/web` |
+| [`10-sprint-backlog.md`](./10-sprint-backlog.md) | M0–M6 broken into ~75 tickets with sizes, acceptance lines, and cut lines | execution |
+| [`11-decision-register.md`](./11-decision-register.md) | Every decision: LOCKED / DEFAULTED / OPEN, with override deadlines and change control | governance; the build-start gate |
+
+**Build-start gate:** the build begins when the founder has skimmed
+`11-decision-register.md` §C and either answered or accepted the defaults.
+Nothing in §C hard-blocks M0.
 
 ## Decisions already locked (do not re-litigate)
 
