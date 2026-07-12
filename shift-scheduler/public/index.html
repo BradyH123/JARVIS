@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shift Scheduler</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📅</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand">
+      <span class="brand-icon">📅</span>
+      <span id="bizName">Schedule</span>
+      <span id="liveDot" class="live-dot off" title="Live updates"></span>
+    </div>
+    <button id="whoChip" class="who-chip" type="button">…</button>
+  </header>
+
+  <nav id="tabs">
+    <button class="tab" data-tab="schedule" type="button">Schedule</button>
+    <button class="tab" data-tab="trades" type="button">Trades<span id="tradeBadge" class="badge hidden"></span></button>
+    <button class="tab" data-tab="manager" type="button"><span id="managerLock">🔒</span> Manager</button>
+  </nav>
+
+  <main id="view" aria-live="polite"></main>
+
+  <div id="modalRoot"></div>
+  <div id="toastRoot"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

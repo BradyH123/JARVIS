@@ -1,0 +1,14 @@
+{
+  "name": "shift-scheduler",
+  "version": "1.0.0",
+  "description": "Live-updating employee shift schedule with in-app shift trading. Zero dependencies.",
+  "main": "server.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/api.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
