@@ -52,6 +52,16 @@ the "simplest robust" rule — overridable before its milestone starts) ·
 | C5 | Design partner firm for M4/M6 demos? | demo runs internal | demo scheduling |
 | C6 | Budget ceiling for LLM spend in dev/demo | $500/mo cap in the budget guard | M3 |
 | C7 | Is client #10 (pro athlete) / any archetype off-brand for your target firms? | keep as specified | M1 seed authoring |
+| C8 | Target segment: independent RIAs $500M–$5B AUM (14 §1) — right first market? | yes | design-partner recruiting |
+| C9 | Pricing hypothesis to test privately: $750/advisor/mo, $2k firm min (14 §2) | test as stated | G2+ conversations only |
+| C10 | Design-partner offer terms: roadmap input + 50% year-one pilot pricing (14 §3) | as stated | partner recruiting |
+
+## C-bis. Hard gates (not questions — checklists that must be signed off here)
+
+| Gate | What | When |
+|---|---|---|
+| G-DATA | No real client PII enters the system until the W3 security checklist (15 §4) is signed off in this register | before Phase 2 W3 |
+| G-LEGAL | Securities-attorney review of the decision-support posture + ToS (15 §6) | before G3 pricing conversations |
 
 ## D. Change control
 

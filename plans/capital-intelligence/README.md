@@ -52,6 +52,15 @@ decided implicitly mid-build):**
 | [`10-sprint-backlog.md`](./10-sprint-backlog.md) | M0–M6 broken into ~75 tickets with sizes, acceptance lines, and cut lines | execution |
 | [`11-decision-register.md`](./11-decision-register.md) | Every decision: LOCKED / DEFAULTED / OPEN, with override deadlines and change control | governance; the build-start gate |
 
+**Layer 3 — execution readiness (running the build and the business):**
+
+| Doc | Purpose | Used by |
+|---|---|---|
+| [`12-prompt-pack.md`](./12-prompt-pack.md) | Full v0.1 system prompts for all 13 agents + debate stages, shared preamble/rules, versioning policy | `packages/agents/prompts` seed |
+| [`13-phase2-data-integrations.md`](./13-phase2-data-integrations.md) | Real-data waves W1–W6, vendor shortlists, cost envelope, and the Phase-1 seams to build now | Phase 2 planning; adapter design |
+| [`14-validation-and-gtm.md`](./14-validation-and-gtm.md) | Target segment, positioning, design-partner program, the three validation gates (G1–G3), metrics | Founder, in parallel with M2–M6 |
+| [`15-compliance-and-risk.md`](./15-compliance-and-risk.md) | Decision-support posture, regulatory touchpoints, AI risk register, security baseline, pre-pilot actions | Compliance story; pilot gate |
+
 **Build-start gate:** the build begins when the founder has skimmed
 `11-decision-register.md` §C and either answered or accepted the defaults.
 Nothing in §C hard-blocks M0.
