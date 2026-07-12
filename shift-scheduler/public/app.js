@@ -289,14 +289,13 @@ function renderSchedule(view) {
 
   const controls = el('div', { class: 'week-controls' },
     el('button', { class: 'btn small nav-btn', onclick: () => { weekOffset -= 1; render(); } }, '‹'),
-    el('span', { class: 'week-label' }, label, weekOffset === 0 ? el('span', { class: 'pill', style: 'margin-left:8px' }, 'This week') : ''),
+    el('span', { class: 'week-label' }, label),
     el('button', { class: 'btn small nav-btn', onclick: () => { weekOffset += 1; render(); } }, '›'),
     weekOffset !== 0 ? el('button', { class: 'btn small', onclick: () => { weekOffset = 0; render(); } }, 'Today') : null,
     me ? el('button', {
       class: `toggle-chip ${myOnly ? 'on' : ''}`,
       onclick: () => { myOnly = !myOnly; render(); },
     }, myOnly ? '✓ My shifts' : 'My shifts') : null,
-    managerPin ? el('button', { class: 'btn small', onclick: () => addShiftModal(startDate) }, '＋ Add shift') : null,
     managerPin ? el('button', {
       class: 'btn small',
       title: 'Copy every shift this week to next week',
@@ -304,12 +303,12 @@ function renderSchedule(view) {
         const res = await act('POST', '/api/shifts/copy-week', { fromWeekStart: startDate });
         if (res) toast(`Copied ${res.copied} shift${res.copied === 1 ? '' : 's'} to next week${res.skipped ? ` (${res.skipped} skipped — overlaps)` : ''}`, 'ok');
       },
-    }, '⧉ Copy → next week') : null,
+    }, 'Copy week →') : null,
   );
   view.append(controls);
   if (privacy) {
     view.append(el('p', { class: 'privacy-hint' },
-      '🔒 You see your days and who’s working with you. Days you’re off appear empty.'));
+      '🔒 You only see days you work — and who’s working with you.'));
   }
 
   const grid = el('div', { class: 'week-grid' });
@@ -462,9 +461,9 @@ function renderTrades(view) {
   const open = state.trades.filter((t) => t.status === 'open');
   const pending = state.trades.filter((t) => t.status === 'pending');
   const closed = state.trades
-    .filter((t) => t.status === 'completed' || t.status === 'cancelled')
+    .filter((t) => t.status === 'completed')
     .sort((a, b) => (b.resolvedAt || 0) - (a.resolvedAt || 0))
-    .slice(0, 8);
+    .slice(0, 5);
 
   if (pending.length) {
     const card = el('div', { class: 'card' },
@@ -475,8 +474,8 @@ function renderTrades(view) {
   }
 
   const openCard = el('div', { class: 'card' },
-    el('h2', {}, '🔁 Open trades'),
-    el('p', { class: 'sub' }, 'Shifts people want covered or swapped. Tap one of your own shifts on the Schedule tab to post it here.'));
+    el('h2', {}, 'Shift trades'),
+    el('p', { class: 'sub' }, 'Tap one of your shifts on the Schedule to post it here.'));
   if (open.length === 0) {
     openCard.append(el('div', { class: 'empty' }, el('span', { class: 'big' }, '🎉'), 'No open trades right now.'));
   } else {
@@ -547,15 +546,15 @@ function tradeCard(t) {
       el('button', {
         class: 'btn primary',
         onclick: () => act('POST', `/api/trades/${t.id}/offers`, { employeeId: me }, `Offered to cover ${ownerName}’s shift`),
-      }, '🙋 Cover this shift'),
-      el('button', { class: 'btn', onclick: () => swapPickerModal(t) }, '🔀 Offer a swap'),
+      }, 'Cover it'),
+      el('button', { class: 'btn', onclick: () => swapPickerModal(t) }, 'Offer swap'),
     );
   }
   if (t.status === 'open' && mineTrade) {
     actions.append(el('button', {
       class: 'btn danger',
       onclick: () => act('POST', `/api/trades/${t.id}/cancel`, { employeeId: me }, 'Trade withdrawn'),
-    }, 'Withdraw trade'));
+    }, 'Withdraw'));
   }
   if (t.status === 'pending' && managerPin) {
     actions.append(
@@ -619,8 +618,7 @@ function renderManager(view) {
 
   // Employees
   const empCard = el('div', { class: 'card' },
-    el('h2', {}, `Team (${state.employees.length})`),
-    el('p', { class: 'sub' }, 'Everyone here appears in the “Who are you?” picker on this shared link.'));
+    el('h2', {}, `Team (${state.employees.length})`));
   for (const emp of state.employees) {
     empCard.append(el('div', { class: 'emp-row' },
       el('span', { class: 'dot', style: `--emp:${emp.color}` }),
@@ -647,22 +645,25 @@ function renderManager(view) {
     nameInput, el('button', { class: 'btn primary', onclick: addEmp }, 'Add')));
   view.append(empCard);
 
-  // Quick add shift
-  if (state.employees.length) {
-    const shiftCard = el('div', { class: 'card' }, el('h2', {}, 'Add a shift'));
-    const form = shiftFormFields({});
-    shiftCard.append(form.grid, el('div', { class: 'form-actions' },
+  // Share
+  view.append(el('div', { class: 'card' },
+    el('h2', {}, 'Share with your team'),
+    el('p', { class: 'sub' }, 'Post this link in your group chat. To add shifts, tap ＋ on any day in the Schedule.'),
+    el('div', { class: 'copy-box' },
+      el('code', {}, location.origin),
       el('button', {
-        class: 'btn primary',
-        onclick: () => act('POST', '/api/shifts', form.values(), 'Shift added'),
-      }, 'Add shift'),
-      el('span', { class: 'sub', style: 'align-self:center' }, 'Tip: you can also tap ＋ on any day in the Schedule tab.'),
-    ));
-    view.append(shiftCard);
-  }
+        class: 'btn small', onclick: async () => {
+          try { await navigator.clipboard.writeText(location.origin); toast('Link copied', 'ok'); }
+          catch { toast('Copy failed', 'error'); }
+        },
+      }, 'Copy')),
+  ));
 
-  // Settings
-  const bizInput = el('input', { type: 'text', value: state.settings.businessName, maxLength: 80 });
+  // Settings (collapsed by default)
+  const bizInput = el('input', {
+    type: 'text', value: state.settings.businessName, maxLength: 80,
+    onchange: () => act('PATCH', '/api/settings', { businessName: bizInput.value }, 'Saved'),
+  });
   const approvalCheck = el('input', {
     type: 'checkbox', checked: state.settings.requireApproval,
     onchange: () => act('PATCH', '/api/settings', { requireApproval: approvalCheck.checked },
@@ -679,44 +680,27 @@ function renderManager(view) {
   const pinInput = el('input', { type: 'password', placeholder: 'New PIN (4+ characters)', autocomplete: 'new-password' });
 
   view.append(el('div', { class: 'card' },
-    el('h2', {}, 'Settings'),
-    el('div', { class: 'form-grid' },
-      el('div', { class: 'field' }, el('label', {}, 'Business name'), bizInput),
-      el('div', { class: 'field' }, el('label', {}, 'Week starts on'), weekSel),
+    el('details', {},
+      el('summary', {}, 'Settings'),
+      el('div', { class: 'settings-body' },
+        el('div', { class: 'form-grid' },
+          el('div', { class: 'field' }, el('label', {}, 'Business name'), bizInput),
+          el('div', { class: 'field' }, el('label', {}, 'Week starts on'), weekSel),
+        ),
+        el('label', { class: 'check-row', style: 'margin-top:8px' }, approvalCheck,
+          el('span', {}, 'Require my approval for trades', el('span', { class: 'hint' }, 'Accepted trades wait for you before the schedule changes.'))),
+        el('label', { class: 'check-row' }, privacyCheck,
+          el('span', {}, 'Employees only see days they work', el('span', { class: 'hint' }, 'Each person sees their own shifts plus whoever works alongside them. You always see everything.'))),
+        el('div', { class: 'inline-row', style: 'margin-top:8px' },
+          pinInput,
+          el('button', {
+            class: 'btn', onclick: async () => {
+              const res = await act('PATCH', '/api/settings', { newPin: pinInput.value }, 'PIN changed');
+              if (res) { managerPin = pinInput.value.trim(); sessionStorage.setItem('ss_pin', managerPin); pinInput.value = ''; }
+            },
+          }, 'Change PIN')),
+      ),
     ),
-    el('label', { class: 'check-row', style: 'margin-top:8px' }, approvalCheck,
-      el('span', {}, 'Require my approval for trades', el('span', { class: 'hint' }, 'Accepted trades wait for you before the schedule changes.'))),
-    el('label', { class: 'check-row' }, privacyCheck,
-      el('span', {}, 'Employees only see days they work', el('span', { class: 'hint' }, 'Each person sees their own shifts plus whoever works alongside them. You always see everything.'))),
-    el('div', { class: 'inline-row', style: 'margin-top:8px' },
-      pinInput,
-      el('button', {
-        class: 'btn', onclick: async () => {
-          const res = await act('PATCH', '/api/settings', { newPin: pinInput.value }, 'PIN changed');
-          if (res) { managerPin = pinInput.value.trim(); sessionStorage.setItem('ss_pin', managerPin); pinInput.value = ''; }
-        },
-      }, 'Change PIN')),
-    el('div', { class: 'form-actions' },
-      el('button', {
-        class: 'btn primary',
-        onclick: () => act('PATCH', '/api/settings', { businessName: bizInput.value }, 'Saved'),
-      }, 'Save name'),
-      el('button', { class: 'btn', onclick: lockManager }, '🔓 Lock manager mode'),
-    ),
-  ));
-
-  // Share
-  view.append(el('div', { class: 'card' },
-    el('h2', {}, 'Share with your team'),
-    el('p', { class: 'sub' }, 'Post this link in your group chat — everyone opens it, picks their name, and sees the live schedule.'),
-    el('div', { class: 'copy-box' },
-      el('code', {}, location.origin),
-      el('button', {
-        class: 'btn small', onclick: async () => {
-          try { await navigator.clipboard.writeText(location.origin); toast('Link copied', 'ok'); }
-          catch { toast('Copy failed', 'error'); }
-        },
-      }, 'Copy')),
   ));
 }
 
@@ -743,10 +727,9 @@ function render() {
 
   document.title = `${state.settings.businessName} — Schedule`;
   $('#bizName').textContent = state.settings.businessName;
-  $('#managerLock').textContent = managerPin ? '🔓' : '🔒';
 
   const current = me ? employeeById(me) : null;
-  $('#whoChip').textContent = current ? `👤 ${current.name}` : (managerPin ? '🔑 Manager' : '👤 Who are you?');
+  $('#whoChip').textContent = current ? current.name : (managerPin ? 'Manager' : 'Who are you?');
 
   const openCount = state.trades.filter((t) => t.status === 'open').length +
     (managerPin ? state.trades.filter((t) => t.status === 'pending').length : 0);

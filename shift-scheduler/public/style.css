@@ -367,6 +367,26 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .emp-row .icon-btn:hover { background: var(--panel-2); color: var(--text); }
 
+.card details > summary {
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card details > summary::-webkit-details-marker { display: none; }
+.card details > summary::after {
+  content: '›';
+  color: var(--muted);
+  font-size: 20px;
+  transform: rotate(90deg);
+  transition: transform .15s;
+}
+.card details[open] > summary::after { transform: rotate(-90deg); }
+.card details .settings-body { margin-top: 12px; }
+
 .check-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 14.5px; }
 .check-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
 .check-row .hint { color: var(--muted); font-size: 12.5px; display: block; }
